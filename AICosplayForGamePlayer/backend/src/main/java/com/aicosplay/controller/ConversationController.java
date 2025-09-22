@@ -1,0 +1,196 @@
+package com.aicosplay.controller;
+
+import com.aicosplay.entity.Conversation;
+import com.aicosplay.entity.Message;
+import com.aicosplay.entity.User;
+import com.aicosplay.service.ConversationService;
+import com.aicosplay.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+import jakarta.servlet.http.HttpSession;
+
+@RestController
+@RequestMapping("/api/conversations")
+public class ConversationController {
+
+    @Autowired
+    private ConversationService conversationService;
+
+    @Autowired
+    private UserService userService;
+
+    // 创建新对话
+    @PostMapping
+    public ResponseEntity<?> createConversation(@RequestBody ConversationRequest request, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            Conversation conversation = conversationService.createConversation(user, request.getTitle());
+            return ResponseEntity.ok(conversation);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 获取用户的所有对话
+    @GetMapping
+    public ResponseEntity<?> getUserConversations(HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            List<Conversation> conversations = conversationService.getUserConversations(user);
+            return ResponseEntity.ok(conversations);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 获取单个对话
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getConversation(@PathVariable Long id, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Conversation conversation = conversationService.getConversationById(id);
+            
+            // 验证对话是否属于当前用户
+            if (!conversation.getUser().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
+            }
+            
+            return ResponseEntity.ok(conversation);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 添加消息到对话
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<?> addMessage(@PathVariable Long id, @RequestBody MessageRequest request, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Conversation conversation = conversationService.getConversationById(id);
+            
+            // 验证对话是否属于当前用户
+            if (!conversation.getUser().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
+            }
+            
+            Message message = conversationService.addMessageToConversation(
+                    conversation,
+                    request.getSenderType(),
+                    request.getContent()
+            );
+            return ResponseEntity.ok(message);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 获取对话中的所有消息
+    @GetMapping("/{id}/messages")
+    public ResponseEntity<?> getConversationMessages(@PathVariable Long id, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Conversation conversation = conversationService.getConversationById(id);
+            
+            // 验证对话是否属于当前用户
+            if (!conversation.getUser().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
+            }
+            
+            List<Message> messages = conversationService.getConversationMessages(conversation);
+            return ResponseEntity.ok(messages);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 删除对话
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteConversation(@PathVariable Long id, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Conversation conversation = conversationService.getConversationById(id);
+            
+            // 验证对话是否属于当前用户
+            if (!conversation.getUser().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
+            }
+            
+            conversationService.deleteConversation(id);
+            return ResponseEntity.ok(new AuthController.ApiResponse(true, "Conversation deleted successfully"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    // 请求DTO类
+    public static class ConversationRequest {
+        private String title;
+
+        // Getters and Setters
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+    }
+
+    public static class MessageRequest {
+        private String senderType;
+        private String content;
+
+        // Getters and Setters
+        public String getSenderType() { return senderType; }
+        public void setSenderType(String senderType) { this.senderType = senderType; }
+        public String getContent() { return content; }
+        public void setContent(String content) { this.content = content; }
+    }
+}
