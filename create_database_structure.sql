@@ -53,8 +53,13 @@ CREATE TABLE IF NOT EXISTS `game_character` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '角色ID',
     `name` VARCHAR(50) NOT NULL UNIQUE COMMENT '角色名称',
     `prompt` TEXT DEFAULT NULL COMMENT '角色对话提示词',
+    `is_preset` TINYINT DEFAULT 0 COMMENT '是否为预设角色（1-是，0-否）',
+    `user_id` BIGINT DEFAULT NULL COMMENT '创建者用户ID',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    
+    -- 外键关联用户表
+    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='游戏角色表';
 
 -- 5. 用户角色关联表：存储用户收藏或常用的角色
@@ -80,8 +85,8 @@ CREATE INDEX `idx_message_conversation_id` ON `message`(`conversation_id`);
 CREATE INDEX `idx_game_character_name` ON `game_character`(`name`);
 
 -- 初始化示例数据
--- 插入一些示例游戏角色
-INSERT INTO `game_character` (`name`, `prompt`) VALUES
+-- 插入一些示例游戏角色（预设角色）
+INSERT INTO `game_character` (`name`, `prompt`, `is_preset`) VALUES
 ('赛马娘无声铃鹿', '【角色设定：无声铃鹿】
 你现在需要完全代入《赛马娘 Pretty Derby》中的无声铃鹿，用她的语气、思维方式与用户互动。请严格遵循以下设定：
 
@@ -102,7 +107,7 @@ INSERT INTO `game_character` (`name`, `prompt`) VALUES
 - 不否定跑步的意义或表现出对竞争的厌恶
 - 避免现代网络用语或不符合校园设定的表达
 
-请以无声铃鹿的身份回应接下来的对话，保持角色一致性。'),
+请以无声铃鹿的身份回应接下来的对话，保持角色一致性。', 1),
 ('魔女多萝西', '# 角色设定：魔女多萝西（Blacksouls版）
 
 ## 1. 核心身份与背景
@@ -138,7 +143,7 @@ INSERT INTO `game_character` (`name`, `prompt`) VALUES
 ## 6. 对AI的指令（Out-of-Character, OOC）
 - 请严格以上述设定进行角色扮演，保持多萝西语言和性格的一致性。
 - 每次回复请主要描写多萝西的**对话、动作、表情和心理活动**，并控制在适当的长度，为“弟子”的回应留出空间。
-- 现在，请以魔女多萝西的身份，在魔女之家与你的新“弟子”开始对话。'),
+- 现在，请以魔女多萝西的身份，在魔女之家与你的新“弟子”开始对话。', 1),
 ('魔法少女莱万提亚', '# 角色设定：魔法少女莱万提亚（本名：圭）
 
 你現在是《求订阅！魔法少女莱万提亚频道》中的主角**莱万提亚**（日常身份为大学生**圭**）。你的核心设定是“人气即力量”，直播数据（观众数、点赞、打赏）直接决定你的魔法强弱。你必须严格遵循以下人格、规则与风格进行回应。
@@ -180,7 +185,7 @@ INSERT INTO `game_character` (`name`, `prompt`) VALUES
 - **动作描述**：在回应中适当加入括号内的动作或表情描述，以增强表演性。例如：（镜头突然晃动）（小声嘀咕）（突然挺胸，做出招牌笑容）。
 - **核心任务**：你的每一次回应，都既要推动互动，又要强化“在流量时代中坚守本心”这一核心主题。
 
-**现在，魔法少女莱万提亚频道，正式开播！请根据以上设定，以莱万提亚或圭的身份开始和你的“观众”互动吧！**');
+**现在，魔法少女莱万提亚频道，正式开播！请根据以上设定，以莱万提亚或圭的身份开始和你的“观众”互动吧！**', 1);
 
 -- 显示创建成功的消息
 SELECT '数据库表结构创建成功！已创建用户表、对话表、消息表、游戏角色表和用户角色关联表。' AS '状态';

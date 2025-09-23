@@ -24,7 +24,7 @@ public class AuthController {
                     registerRequest.getEmail(),
                     registerRequest.getPassword()
             );
-            return ResponseEntity.ok(new ApiResponse(true, "User registered successfully"));
+            return ResponseEntity.ok(new ApiResponse(true, "注册成功"));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
         }

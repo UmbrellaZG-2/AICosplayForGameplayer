@@ -39,16 +39,24 @@
         <span>已有账号？</span>
         <router-link to="/">返回登录</router-link>
       </div>
-      <div v-if="error" class="error-message">{{ error }}</div>
-      <div v-if="success" class="success-message">{{ success }}</div>
     </div>
   </div>
+  
+  <!-- 通知组件 -->
+  <Notification
+    :show="showNotification"
+    :title="notificationTitle"
+    :message="notificationMessage"
+    @confirm="handleNotificationConfirm"
+    @close="handleNotificationClose"
+  />
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '../utils/api.js'
+import Notification from '../components/Notification.vue'
 
 const router = useRouter()
 const form = ref({
@@ -56,27 +64,60 @@ const form = ref({
   email: '',
   password: ''
 })
-const error = ref('')
-const success = ref('')
+
+// 通知相关状态
+const showNotification = ref(false)
+const notificationTitle = ref('')
+const notificationMessage = ref('')
+const notificationType = ref('') // success, usernameDuplicate, emailDuplicate
 
 const handleRegister = async () => {
   try {
     const response = await authAPI.register(form.value)
     if (response.success) {
-      success.value = response.message
-      error.value = ''
-      // 注册成功后跳转到登录页面
-      setTimeout(() => {
-        router.push('/')
-      }, 2000)
+      // 注册成功
+      notificationTitle.value = '注册成功'
+      notificationMessage.value = '恭喜您注册成功！点击确定返回登录页面。'
+      notificationType.value = 'success'
+      showNotification.value = true
     } else {
-      error.value = response.message
-      success.value = ''
-    }
+        // 根据错误信息显示不同的通知
+        if (response.message === '用户名重复') {
+          notificationTitle.value = '用户名重复'
+          notificationMessage.value = '该用户名已被注册，请尝试其他用户名。'
+          notificationType.value = 'usernameDuplicate'
+        } else if (response.message === '邮箱重复') {
+          notificationTitle.value = '邮箱重复'
+          notificationMessage.value = '该邮箱已被注册，请尝试其他邮箱。'
+          notificationType.value = 'emailDuplicate'
+        } else {
+          notificationTitle.value = '注册失败'
+          notificationMessage.value = response.message
+          notificationType.value = 'error'
+        }
+        showNotification.value = true
+      }
   } catch (err) {
-    error.value = '注册失败，请检查网络或服务器状态'
-    success.value = ''
+    notificationTitle.value = '注册失败'
+    notificationMessage.value = '注册失败，请检查网络或服务器状态'
+    notificationType.value = 'error'
+    showNotification.value = true
   }
+}
+
+// 处理通知确认按钮点击
+const handleNotificationConfirm = () => {
+  showNotification.value = false
+  
+  // 注册成功后跳转到登录页面
+  if (notificationType.value === 'success') {
+    router.push('/')
+  }
+}
+
+// 处理通知关闭（点击遮罩层）
+const handleNotificationClose = () => {
+  showNotification.value = false
 }
 </script>
 
@@ -156,17 +197,5 @@ const handleRegister = async () => {
 
 .login-link a:hover {
   text-decoration: underline;
-}
-
-.error-message {
-  margin-top: 15px;
-  color: #f44336;
-  text-align: center;
-}
-
-.success-message {
-  margin-top: 15px;
-  color: #4CAF50;
-  text-align: center;
 }
 </style>

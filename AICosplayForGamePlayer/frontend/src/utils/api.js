@@ -59,12 +59,18 @@ export const authAPI = {
 
 // 对话相关API
 export const conversationAPI = {
-  create: (title) => api.post('/api/conversations', { title }),
+  create: (title, characterId) => api.post('/api/conversations', { title, characterId }),
   getAll: () => api.get('/api/conversations'),
   getById: (id) => api.get(`/api/conversations/${id}`),
   delete: (id) => api.delete(`/api/conversations/${id}`),
   getMessages: (id) => api.get(`/api/conversations/${id}/messages`),
   addMessage: (id, message) => api.post(`/api/conversations/${id}/messages`, message)
+}
+
+// 游戏角色相关API
+export const gameCharacterAPI = {
+  getAll: () => api.get('/api/characters'),
+  create: (characterData) => api.post('/api/characters', characterData)
 }
 
 export default api

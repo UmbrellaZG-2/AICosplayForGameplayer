@@ -41,6 +41,12 @@ public class GameCharacter {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    private Boolean isPreset = false;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

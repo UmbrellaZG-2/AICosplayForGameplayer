@@ -19,12 +19,12 @@ public class UserService {
     public User registerUser(String username, String email, String password) {
         // 检查用户名是否已存在
         if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("Username already exists");
+            throw new RuntimeException("用户名重复");
         }
         
         // 检查邮箱是否已存在
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already exists");
+            throw new RuntimeException("邮箱重复");
         }
 
         // 创建新用户

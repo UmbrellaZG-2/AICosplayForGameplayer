@@ -1,9 +1,11 @@
 package com.aicosplay.service;
 
 import com.aicosplay.entity.GameCharacter;
+import com.aicosplay.entity.User;
 import com.aicosplay.repository.GameCharacterRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,9 +24,31 @@ public class GameCharacterService {
         return gameCharacterRepository.save(character);
     }
 
-    // 获取所有游戏角色
+    // 获取所有游戏角色（管理员用）
     public List<GameCharacter> getAllCharacters() {
         return gameCharacterRepository.findAll();
+    }
+
+    // 获取预设角色
+    public List<GameCharacter> getPresetCharacters() {
+        return gameCharacterRepository.findByIsPresetTrue();
+    }
+
+    // 获取用户自定义角色
+    public List<GameCharacter> getUserCharacters(Long userId) {
+        return gameCharacterRepository.findByUserId(userId);
+    }
+
+    // 获取用户可见的所有角色（预设角色+当前用户的自定义角色）
+    public List<GameCharacter> getVisibleCharacters(User user) {
+        List<GameCharacter> allVisibleCharacters = new ArrayList<>();
+        // 添加所有预设角色
+        allVisibleCharacters.addAll(getPresetCharacters());
+        // 添加当前用户的自定义角色
+        if (user != null) {
+            allVisibleCharacters.addAll(getUserCharacters(user.getId()));
+        }
+        return allVisibleCharacters;
     }
 
     // 根据ID获取游戏角色

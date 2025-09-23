@@ -36,7 +36,14 @@ public class ConversationController {
             User user = userService.findByUsername(username)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            Conversation conversation = conversationService.createConversation(user, request.getTitle(), request.getCharacterName());
+            Conversation conversation;
+            if (request.getCharacterId() != null) {
+                // 通过角色ID创建对话
+                conversation = conversationService.createConversationByCharacterId(user, request.getTitle(), request.getCharacterId());
+            } else {
+                // 通过角色名称创建对话（保持向后兼容）
+                conversation = conversationService.createConversation(user, request.getTitle(), request.getCharacterName());
+            }
             return ResponseEntity.ok(conversation);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
@@ -230,12 +237,15 @@ public class ConversationController {
     public static class ConversationRequest {
         private String title;
         private String characterName;
+        private Long characterId;
 
         // Getters and Setters
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
         public String getCharacterName() { return characterName; }
         public void setCharacterName(String characterName) { this.characterName = characterName; }
+        public Long getCharacterId() { return characterId; }
+        public void setCharacterId(Long characterId) { this.characterId = characterId; }
     }
 
     public static class MessageRequest {

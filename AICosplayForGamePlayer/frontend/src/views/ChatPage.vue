@@ -65,12 +65,128 @@
       </div>
     </div>
   </div>
+
+  <!-- 角色选择模态框 -->
+  <div v-if="showCharacterSelectModal" class="modal-overlay" @click="showCharacterSelectModal = false">
+    <div class="modal-content" @click.stop>
+      <div class="modal-header">
+        <h3>选择角色</h3>
+        <button class="close-button" @click="showCharacterSelectModal = false">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <!-- 预设角色列表 -->
+        <div class="character-section">
+          <h4>预设角色</h4>
+          <div class="character-list">
+            <div 
+              v-for="character in characters.filter(c => c.isPreset)" 
+              :key="character.id"
+              class="character-item"
+              :class="{ selected: selectedCharacterId === character.id }"
+              @click="handleCharacterSelect(character.id)"
+            >
+              <div class="character-avatar">
+                <!-- 从指定文件夹读取角色头像 -->
+                <img 
+                  v-if="character.name" 
+                  :src="`/image/Character/${character.name}.jpg`" 
+                  :alt="character.name"
+                  @error="this.src = `/image/Character/${character.name}.png`"
+                  @error.once="this.src = '🎭'"
+                >
+                <span v-else>🎭</span>
+              </div>
+              <div class="character-info">
+                <div class="character-name">{{ character.name }}</div>
+                <div class="character-desc">{{ character.prompt.substring(0, 30) }}...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 用户自定义角色列表 -->
+        <div v-if="characters.filter(c => !c.isPreset).length > 0" class="character-section">
+          <h4>我的角色</h4>
+          <div class="character-list">
+            <div 
+              v-for="character in characters.filter(c => !c.isPreset)" 
+              :key="character.id"
+              class="character-item"
+              :class="{ selected: selectedCharacterId === character.id }"
+              @click="handleCharacterSelect(character.id)"
+            >
+              <div class="character-avatar">
+                <!-- 从指定文件夹读取角色头像 -->
+                <img 
+                  v-if="character.name" 
+                  :src="`/image/Character/${character.name}.jpg`" 
+                  :alt="character.name"
+                  @error="this.src = `/image/Character/${character.name}.png`"
+                  @error.once="this.src = '🎭'"
+                >
+                <span v-else>🎭</span>
+              </div>
+              <div class="character-info">
+                <div class="character-name">{{ character.name }}</div>
+                <div class="character-desc">{{ character.prompt.substring(0, 30) }}...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 自定义角色表单 -->
+        <div class="custom-character-section">
+          <button class="custom-character-button" @click="toggleCustomCharacterForm">
+            {{ showCustomCharacterForm ? '取消' : '+ 创建自定义角色' }}
+          </button>
+          
+          <div v-if="showCustomCharacterForm" class="custom-character-form">
+            <div class="form-group">
+              <label>角色名称</label>
+              <input 
+                type="text" 
+                v-model="customCharacterName" 
+                placeholder="请输入角色名称"
+              >
+            </div>
+            
+            <div class="form-group">
+              <label>角色描述</label>
+              <textarea 
+                v-model="customCharacterPrompt" 
+                placeholder="请输入角色的详细描述和行为特征"
+                rows="4"
+              ></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>角色头像</label>
+              <input 
+                type="file" 
+                accept="image/*" 
+                @change="handleAvatarUpload"
+              >
+              <div v-if="customCharacterAvatar" class="file-name">
+                {{ customCharacterAvatar.name }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="cancel-button" @click="showCharacterSelectModal = false">取消</button>
+        <button class="confirm-button" @click="confirmCreateChat">确认</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { conversationAPI } from '../utils/api.js'
+import { conversationAPI, gameCharacterAPI } from '../utils/api.js'
 import { testCreateConversation } from '../utils/test.js'
 
 const router = useRouter()
@@ -80,9 +196,19 @@ const currentConversationId = ref(null)
 const currentConversation = ref(null)
 const inputMessage = ref('')
 
-// 初始化时加载对话列表
+// 角色选择相关状态
+const showCharacterSelectModal = ref(false)
+const characters = ref([])
+const selectedCharacterId = ref(null)
+const showCustomCharacterForm = ref(false)
+const customCharacterName = ref('')
+const customCharacterPrompt = ref('')
+const customCharacterAvatar = ref(null)
+
+// 初始化时加载对话列表和角色列表
 onMounted(() => {
   loadConversations()
+  loadCharacters()
 })
 
 // 加载对话列表
@@ -95,33 +221,71 @@ const loadConversations = async () => {
   }
 }
 
-// 创建新对话
-const createNewChat = async () => {
+// 加载角色列表
+const loadCharacters = async () => {
   try {
-    console.log('点击了创建新对话按钮');
-    // 使用默认标题替代prompt，避免浏览器兼容性问题
-    const title = '新对话'
-    
-    console.log('准备发送请求到后端API...');
-    
-    // 使用直接的fetch请求，绕过可能存在问题的api.js
-    const response = await fetch('/api/conversations', {
-      method: 'POST',
-      credentials: 'include', // 确保携带凭证
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ title })
-    });
-    
-    console.log('收到响应，状态码:', response.status);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP错误! 状态码: ${response.status}`);
+    const data = await gameCharacterAPI.getAll()
+    characters.value = data
+  } catch (error) {
+    console.error('加载角色列表失败:', error)
+  }
+}
+
+// 打开角色选择模态框
+const openCharacterSelectModal = () => {
+  selectedCharacterId.value = null
+  showCustomCharacterForm.value = false
+  customCharacterName.value = ''
+  customCharacterPrompt.value = ''
+  customCharacterAvatar.value = null
+  loadCharacters() // 每次打开都重新加载角色列表
+  showCharacterSelectModal.value = true
+}
+
+// 处理角色选择
+const handleCharacterSelect = (characterId) => {
+  selectedCharacterId.value = characterId
+}
+
+// 切换到自定义角色表单
+const toggleCustomCharacterForm = () => {
+  showCustomCharacterForm.value = !showCustomCharacterForm.value
+}
+
+// 处理头像上传
+const handleAvatarUpload = (event) => {
+  customCharacterAvatar.value = event.target.files[0]
+}
+
+// 创建自定义角色并创建对话
+const createCustomCharacterAndChat = async () => {
+  try {
+    // 先创建自定义角色
+    const formData = new FormData()
+    formData.append('name', customCharacterName.value)
+    formData.append('prompt', customCharacterPrompt.value)
+    if (customCharacterAvatar.value) {
+      formData.append('avatar', customCharacterAvatar.value)
     }
     
-    const newConversation = await response.json();
-    console.log('创建新对话成功:', newConversation);
+    const newCharacter = await gameCharacterAPI.create(formData)
+    
+    // 然后使用新创建的角色创建对话
+    await createNewChatWithCharacter(newCharacter.id)
+    
+    // 关闭模态框
+    showCharacterSelectModal.value = false
+  } catch (error) {
+    console.error('创建自定义角色失败:', error)
+    alert('创建自定义角色失败，请重试')
+  }
+}
+
+// 创建新对话（带角色）
+const createNewChatWithCharacter = async (characterId) => {
+  try {
+    const title = '新对话'
+    const newConversation = await conversationAPI.create(title, characterId)
     
     conversations.value.unshift(newConversation)
     switchConversation(newConversation.id)
@@ -129,6 +293,25 @@ const createNewChat = async () => {
     console.error('创建新对话失败:', error)
     alert('创建新对话失败，请重试')
   }
+}
+
+// 确认创建新对话
+const confirmCreateChat = async () => {
+  if (selectedCharacterId.value) {
+    // 使用已选择的角色创建对话
+    await createNewChatWithCharacter(selectedCharacterId.value)
+    showCharacterSelectModal.value = false
+  } else if (showCustomCharacterForm.value && customCharacterName.value && customCharacterPrompt.value) {
+    // 创建自定义角色并创建对话
+    await createCustomCharacterAndChat()
+  } else {
+    alert('请选择一个角色或创建自定义角色')
+  }
+}
+
+// 原来的创建新对话按钮现在打开角色选择模态框
+const createNewChat = () => {
+  openCharacterSelectModal()
 }
 
 // 切换对话
@@ -501,5 +684,262 @@ const handleLogout = () => {
 .tip-content h3 {
   margin-bottom: 10px;
   color: #333;
+}
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f5f5f5;
+  color: #666;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.character-section {
+  margin-bottom: 24px;
+}
+
+.character-section h4 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.character-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #f8f9fa;
+}
+
+.character-item:hover {
+  background-color: #e9ecef;
+}
+
+.character-item.selected {
+  border-color: #4CAF50;
+  background-color: #f1f8e9;
+}
+
+.character-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.character-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.character-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.character-desc {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.4;
+}
+
+.custom-character-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.custom-character-button {
+  width: 100%;
+  padding: 12px 20px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.custom-character-button:hover {
+  background-color: #1976D2;
+}
+
+.custom-character-form {
+  margin-top: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.form-group input[type="text"],
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-group input[type="file"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.file-name {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cancel-button,
+.confirm-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.cancel-button {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.cancel-button:hover {
+  background-color: #e0e0e0;
+}
+
+.confirm-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.confirm-button:hover {
+  background-color: #45a049;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .modal-content {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .character-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
 }
 </style>

@@ -24,6 +24,10 @@ public class Conversation {
 
     @Column(name = "character_name", nullable = false)
     private String characterName;
+    
+    @ManyToOne
+    @JoinColumn(name = "character_id", nullable = false)
+    private GameCharacter gameCharacter;
 
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Message> messages = new ArrayList<>();

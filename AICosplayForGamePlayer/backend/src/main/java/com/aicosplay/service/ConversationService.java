@@ -37,6 +37,21 @@ public class ConversationService {
         conversation.setUser(user);
         conversation.setTitle(title);
         conversation.setCharacterName(characterName);
+        conversation.setGameCharacter(gameCharacter);
+        return conversationRepository.save(conversation);
+    }
+    
+    // 根据角色ID创建对话
+    public Conversation createConversationByCharacterId(User user, String title, Long characterId) {
+        // 检查角色是否存在
+        GameCharacter gameCharacter = gameCharacterRepository.findById(characterId)
+                .orElseThrow(() -> new RuntimeException("Character not found"));
+                
+        Conversation conversation = new Conversation();
+        conversation.setUser(user);
+        conversation.setTitle(title);
+        conversation.setCharacterName(gameCharacter.getName());
+        conversation.setGameCharacter(gameCharacter);
         return conversationRepository.save(conversation);
     }
 
