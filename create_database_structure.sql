@@ -9,16 +9,46 @@ USE aicosplay;
 -- 禁用外键检查以便安全删除数据
 SET FOREIGN_KEY_CHECKS = 0;
 
--- 生成并执行删除所有表数据的语句
-SET @tables = NULL;
-SELECT GROUP_CONCAT(table_schema, '.', table_name) INTO @tables 
-FROM information_schema.tables 
-WHERE table_schema = 'aicosplay';
+-- 使用存储过程来安全清空数据库中的所有表
+DELIMITER $$
+DROP PROCEDURE IF EXISTS clear_all_tables $$
+CREATE PROCEDURE clear_all_tables()
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE tableName VARCHAR(255);
+    DECLARE cur CURSOR FOR SELECT table_name FROM information_schema.tables WHERE table_schema = 'aicosplay';
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- 创建临时表存储表名
+    DROP TEMPORARY TABLE IF EXISTS temp_tables;
+    CREATE TEMPORARY TABLE temp_tables AS SELECT table_name FROM information_schema.tables WHERE table_schema = 'aicosplay';
+    
+    OPEN cur;
+    
+    read_loop:
+    LOOP
+        FETCH cur INTO tableName;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        -- 构建并执行TRUNCATE TABLE语句
+        SET @sql = CONCAT('TRUNCATE TABLE ', tableName);
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END LOOP;
+    
+    CLOSE cur;
+    DROP TEMPORARY TABLE IF EXISTS temp_tables;
+END $$
+DELIMITER ;
 
-SET @tables = CONCAT('TRUNCATE TABLE ', @tables);
-PREPARE stmt FROM @tables;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- 调用存储过程清空所有表
+CALL clear_all_tables();
+
+-- 删除临时存储过程
+DROP PROCEDURE IF EXISTS clear_all_tables;
 
 -- 重新启用外键检查
 SET FOREIGN_KEY_CHECKS = 1;
@@ -85,14 +115,11 @@ CREATE TABLE IF NOT EXISTS `user_character` (
     -- 联合唯一索引
     UNIQUE KEY `uk_user_character` (`user_id`, `character_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户角色关联表';
-
--- 添加索引以提高查询性能
--- 使用IF NOT EXISTS避免重复创建索引导致的错误
-CREATE INDEX IF NOT EXISTS `idx_user_username` ON `user`(`username`);
-CREATE INDEX IF NOT EXISTS `idx_user_email` ON `user`(`email`);
-CREATE INDEX IF NOT EXISTS `idx_conversation_user_id` ON `conversation`(`user_id`);
-CREATE INDEX IF NOT EXISTS `idx_message_conversation_id` ON `message`(`conversation_id`);
-CREATE INDEX IF NOT EXISTS `idx_game_character_name` ON `game_character`(`name`);
+CREATE INDEX `idx_user_username` ON `user`(`username`);
+CREATE INDEX `idx_user_email` ON `user`(`email`);
+CREATE INDEX `idx_conversation_user_id` ON `conversation`(`user_id`);
+CREATE INDEX `idx_message_conversation_id` ON `message`(`conversation_id`);
+CREATE INDEX `idx_game_character_name` ON `game_character`(`name`);
 
 -- 显示创建成功的消息
 SELECT '数据库表结构创建成功！已创建用户表、对话表、消息表、游戏角色表和用户角色关联表（无外键约束）。' AS '状态';

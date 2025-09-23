@@ -143,7 +143,7 @@ public class AuthController {
         private String email;
         private String nickname;
         private String avatar;
-        private Integer status;
+        private Byte status;
         private String createdAt;
         private String updatedAt;
 
@@ -163,8 +163,8 @@ public class AuthController {
         public String getAvatar() { return avatar; }
         public void setAvatar(String avatar) { this.avatar = avatar; }
         
-        public Integer getStatus() { return status; }
-        public void setStatus(Integer status) { this.status = status; }
+        public Byte getStatus() { return status; }
+        public void setStatus(Byte status) { this.status = status; }
         
         public String getCreatedAt() { return createdAt; }
         public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

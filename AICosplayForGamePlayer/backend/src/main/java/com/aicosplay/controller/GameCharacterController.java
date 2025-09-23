@@ -34,8 +34,8 @@ public class GameCharacterController {
             User currentUser = getCurrentUser();
             // 设置创建者
             character.setUser(currentUser);
-            // 自定义角色的isPreset默认为false
-            character.setIsPreset(false);
+            // 自定义角色的isPreset默认为0
+            character.setIsPreset((byte) 0);
             GameCharacter createdCharacter = gameCharacterService.createCharacter(character);
             return new ResponseEntity<>(createdCharacter, HttpStatus.CREATED);
         } catch (RuntimeException e) {
@@ -59,7 +59,7 @@ public class GameCharacterController {
                     .orElseThrow(() -> new RuntimeException("Character not found"));
             User currentUser = getCurrentUser();
             // 检查用户是否有权限查看该角色
-            if (!character.getIsPreset() && (currentUser == null || !currentUser.getId().equals(character.getUser().getId()))) {
+            if (character.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(character.getUser().getId()))) {
                 return new ResponseEntity<>(new ApiResponse(false, "无权访问该角色"), HttpStatus.FORBIDDEN);
             }
             return new ResponseEntity<>(character, HttpStatus.OK);
@@ -76,7 +76,7 @@ public class GameCharacterController {
                     .orElseThrow(() -> new RuntimeException("Character not found"));
             User currentUser = getCurrentUser();
             // 检查用户是否有权限更新该角色
-            if (!existingCharacter.getIsPreset() && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
+            if (existingCharacter.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
                 return new ResponseEntity<>(new ApiResponse(false, "无权更新该角色"), HttpStatus.FORBIDDEN);
             }
             GameCharacter updatedCharacter = gameCharacterService.updateCharacter(id, character);
@@ -94,11 +94,11 @@ public class GameCharacterController {
                     .orElseThrow(() -> new RuntimeException("Character not found"));
             User currentUser = getCurrentUser();
             // 检查用户是否有权限删除该角色
-            if (!existingCharacter.getIsPreset() && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
+            if (existingCharacter.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
                 return new ResponseEntity<>(new ApiResponse(false, "无权删除该角色"), HttpStatus.FORBIDDEN);
             }
             // 不允许删除预设角色
-            if (existingCharacter.getIsPreset()) {
+            if (existingCharacter.getIsPreset() == (byte) 1) {
                 return new ResponseEntity<>(new ApiResponse(false, "预设角色不能删除"), HttpStatus.BAD_REQUEST);
             }
             gameCharacterService.deleteCharacter(id);

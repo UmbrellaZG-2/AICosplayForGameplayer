@@ -35,7 +35,7 @@ public class User {
     private LocalDateTime updatedAt;
 
     @Column
-    private Integer status = 1;
+    private Byte status = 1;
 
     @PrePersist
     protected void onCreate() {

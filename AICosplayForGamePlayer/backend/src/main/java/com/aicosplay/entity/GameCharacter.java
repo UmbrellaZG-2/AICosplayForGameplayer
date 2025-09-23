@@ -18,6 +18,13 @@ public class GameCharacter {
 
     @Column(columnDefinition = "TEXT")
     private String prompt;
+    
+    @Column(name = "image_path")
+    private String imagePath;
+    
+    @Lob
+    @Column(name = "image_data")
+    private byte[] imageData;
 
     @Transient
     private String avatar; // 虚拟字段，不存储到数据库，运行时根据name生成路径
@@ -27,9 +34,8 @@ public class GameCharacter {
         if (name == null) {
             return null;
         }
-        // 构建头像路径，支持jpg和png格式
-        // 前端应根据实际文件存在情况选择正确的后缀
-        String basePath = "/image/Character/";
+        // 构建头像路径，与数据库中image_path字段格式匹配
+        String basePath = "/Character/";
         return basePath + name;
     }
 
@@ -41,7 +47,7 @@ public class GameCharacter {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    private Boolean isPreset = false;
+    private Byte isPreset = 0;
 
     @ManyToOne
     @JoinColumn(name = "user_id")

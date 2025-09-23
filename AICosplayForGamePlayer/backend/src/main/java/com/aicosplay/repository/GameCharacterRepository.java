@@ -11,6 +11,6 @@ public interface GameCharacterRepository extends JpaRepository<GameCharacter, Lo
 
     Optional<GameCharacter> findByName(String name);
     boolean existsByName(String name);
-    List<GameCharacter> findByIsPresetTrue();
+    List<GameCharacter> findByIsPreset(Byte isPreset);
     List<GameCharacter> findByUserId(Long userId);
 }

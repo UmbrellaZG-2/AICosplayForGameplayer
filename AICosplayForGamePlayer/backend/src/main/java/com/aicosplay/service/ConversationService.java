@@ -37,7 +37,6 @@ public class ConversationService {
         conversation.setUser(user);
         conversation.setTitle(title);
         conversation.setCharacterName(characterName);
-        conversation.setGameCharacter(gameCharacter);
         return conversationRepository.save(conversation);
     }
     
@@ -51,7 +50,6 @@ public class ConversationService {
         conversation.setUser(user);
         conversation.setTitle(title);
         conversation.setCharacterName(gameCharacter.getName());
-        conversation.setGameCharacter(gameCharacter);
         return conversationRepository.save(conversation);
     }
 
@@ -65,7 +63,7 @@ public class ConversationService {
                 .orElseThrow(() -> new RuntimeException("Conversation not found"));
                 
         // 检查对话是否已删除
-        if (conversation.getIsDeleted() == 1) {
+        if (conversation.getIsDeleted() == (byte) 1) {
             throw new RuntimeException("Conversation has been deleted");
         }
                 
@@ -83,7 +81,7 @@ public class ConversationService {
         }
         
         // 检查对话是否已删除
-        if (conversation.getIsDeleted() == 1) {
+        if (conversation.getIsDeleted() == (byte) 1) {
             throw new RuntimeException("Cannot add message to deleted conversation");
         }
         
@@ -91,7 +89,7 @@ public class ConversationService {
         Message userMessage = new Message();
         userMessage.setConversation(conversation);
         userMessage.setContent(content);
-        userMessage.setSenderType(1); // 1表示用户
+        userMessage.setSenderType((byte) 1); // 1表示用户
         userMessage.setCreatedAt(java.time.LocalDateTime.now());
         messageRepository.save(userMessage);
         
@@ -107,7 +105,7 @@ public class ConversationService {
             Message aiMessage = new Message();
             aiMessage.setConversation(conversation);
             aiMessage.setContent(aiResponse);
-            aiMessage.setSenderType(2); // 2表示AI
+            aiMessage.setSenderType((byte) 2); // 2表示AI
             aiMessage.setCreatedAt(java.time.LocalDateTime.now());
             messageRepository.save(aiMessage);
         } catch (SecurityException e) {
@@ -115,7 +113,7 @@ public class ConversationService {
             Message safetyMessage = new Message();
             safetyMessage.setConversation(conversation);
             safetyMessage.setContent("我无法为这个问题提供相应解答。你可以尝试提供其他话题，我会尽力为你提供支持和解答。");
-            safetyMessage.setSenderType(2); // 2表示AI
+            safetyMessage.setSenderType((byte) 2); // 2表示AI
             safetyMessage.setCreatedAt(java.time.LocalDateTime.now());
             messageRepository.save(safetyMessage);
         }
@@ -138,7 +136,7 @@ public class ConversationService {
         return messages.stream()
                 .limit(maxMessages)
                 .sorted((m1, m2) -> m1.getCreatedAt().compareTo(m2.getCreatedAt()))
-                .map(m -> (m.getSenderType() == 1 ? "用户" : "AI") + ": " + m.getContent())
+                .map(m -> (m.getSenderType() == (byte) 1 ? "用户" : "AI") + ": " + m.getContent())
                 .collect(Collectors.joining("\n"));
     }
 
@@ -152,7 +150,7 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Conversation not found"));
                 
-        conversation.setIsDeleted(1);
+        conversation.setIsDeleted((byte) 1);
         conversationRepository.save(conversation);
     }
 
@@ -162,7 +160,7 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Conversation not found"));
                 
-        conversation.setIsDeleted(0);
+        conversation.setIsDeleted((byte) 0);
         conversationRepository.save(conversation);
     }
 

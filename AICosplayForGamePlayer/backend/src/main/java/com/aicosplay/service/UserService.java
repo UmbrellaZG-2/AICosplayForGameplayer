@@ -33,7 +33,7 @@ public class UserService {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
         user.setNickname(username); // 默认使用用户名为昵称
-        user.setStatus(1); // 默认状态为启用
+        user.setStatus((byte) 1); // 默认状态为启用
 
         return userRepository.save(user);
     }
@@ -47,7 +47,7 @@ public class UserService {
         if (userOptional.isPresent()) {
             User user = userOptional.get();
             // 检查用户状态是否启用
-            if (user.getStatus() != 1) {
+            if (user.getStatus() != (byte) 1) {
                 return false;
             }
             return passwordEncoder.matches(password, user.getPassword());

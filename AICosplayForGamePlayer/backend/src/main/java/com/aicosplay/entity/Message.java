@@ -18,7 +18,7 @@ public class Message {
     private Conversation conversation;
 
     @Column(name = "sender_type", nullable = false)
-    private Integer senderType; // 1-用户，2-AI
+    private Byte senderType; // 1-用户，2-AI
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;

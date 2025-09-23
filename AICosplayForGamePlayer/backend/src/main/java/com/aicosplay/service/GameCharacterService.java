@@ -31,7 +31,7 @@ public class GameCharacterService {
 
     // 获取预设角色
     public List<GameCharacter> getPresetCharacters() {
-        return gameCharacterRepository.findByIsPresetTrue();
+        return gameCharacterRepository.findByIsPreset((byte) 1);
     }
 
     // 获取用户自定义角色

@@ -249,12 +249,12 @@ public class ConversationController {
     }
 
     public static class MessageRequest {
-        private Integer senderType; // 1-用户，2-AI
+        private Byte senderType; // 1-用户，2-AI
         private String content;
 
         // Getters and Setters
-        public Integer getSenderType() { return senderType; }
-        public void setSenderType(Integer senderType) { this.senderType = senderType; }
+        public Byte getSenderType() { return senderType; }
+        public void setSenderType(Byte senderType) { this.senderType = senderType; }
         public String getContent() { return content; }
         public void setContent(String content) { this.content = content; }
     }
