@@ -102,17 +102,17 @@ public class ConversationController {
             User user = userService.findByUsername(username)
                     .orElseThrow(() -> new RuntimeException("User not found"));
             
-            Conversation conversation = conversationService.getConversationById(id);
-            
             // 验证对话是否属于当前用户
+            Conversation conversation = conversationService.getConversationById(id);
             if (!conversation.getUser().getId().equals(user.getId())) {
                 return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
             }
             
+            // 调用更新后的方法，senderType始终为USER，因为AI回复是自动生成的
             Message message = conversationService.addMessageToConversation(
-                    conversation,
-                    request.getSenderType(),
-                    request.getContent()
+                    id,  // conversationId
+                    request.getContent(),
+                    user
             );
             return ResponseEntity.ok(message);
         } catch (RuntimeException e) {
