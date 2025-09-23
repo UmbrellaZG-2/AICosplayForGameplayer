@@ -71,6 +71,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { conversationAPI } from '../utils/api.js'
+import { testCreateConversation } from '../utils/test.js'
 
 const router = useRouter()
 const conversations = ref([])
@@ -97,10 +98,31 @@ const loadConversations = async () => {
 // 创建新对话
 const createNewChat = async () => {
   try {
-    const title = prompt('请输入对话标题:') || '未命名对话'
-    if (!title) return
+    console.log('点击了创建新对话按钮');
+    // 使用默认标题替代prompt，避免浏览器兼容性问题
+    const title = '新对话'
     
-    const newConversation = await conversationAPI.create(title)
+    console.log('准备发送请求到后端API...');
+    
+    // 使用直接的fetch请求，绕过可能存在问题的api.js
+    const response = await fetch('/api/conversations', {
+      method: 'POST',
+      credentials: 'include', // 确保携带凭证
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ title })
+    });
+    
+    console.log('收到响应，状态码:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP错误! 状态码: ${response.status}`);
+    }
+    
+    const newConversation = await response.json();
+    console.log('创建新对话成功:', newConversation);
+    
     conversations.value.unshift(newConversation)
     switchConversation(newConversation.id)
   } catch (error) {

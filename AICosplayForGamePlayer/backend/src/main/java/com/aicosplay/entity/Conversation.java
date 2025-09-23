@@ -8,7 +8,7 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "conversations")
+@Table(name = "conversation")
 public class Conversation {
 
     @Id
@@ -19,8 +19,11 @@ public class Conversation {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "conversation_title")
-    private String conversationTitle;
+    @Column
+    private String title;
+
+    @Column(name = "character_name", nullable = false)
+    private String characterName;
 
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Message> messages = new ArrayList<>();
@@ -30,6 +33,9 @@ public class Conversation {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "is_deleted", columnDefinition = "TINYINT default 0")
+    private Integer isDeleted = 0;
 
     @PrePersist
     protected void onCreate() {

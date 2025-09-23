@@ -137,7 +137,7 @@
         <router-link to="/register" class="footer-link">注册</router-link>
         <router-link to="/chat" class="footer-link">开始聊天</router-link>
       </div>
-      <p class="copyright">© 2023 AICosplayForGamePlayer. 保留所有权利。</p>
+      <p class="copyright">© 2025 AICosplayForGamePlayer. 保留所有权利。</p>
     </footer>
   </div>
 </template>

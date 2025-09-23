@@ -32,6 +32,8 @@ public class UserService {
         user.setUsername(username);
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
+        user.setNickname(username); // 默认使用用户名为昵称
+        user.setStatus(1); // 默认状态为启用
 
         return userRepository.save(user);
     }
@@ -44,8 +46,30 @@ public class UserService {
         Optional<User> userOptional = userRepository.findByUsername(username);
         if (userOptional.isPresent()) {
             User user = userOptional.get();
+            // 检查用户状态是否启用
+            if (user.getStatus() != 1) {
+                return false;
+            }
             return passwordEncoder.matches(password, user.getPassword());
         }
         return false;
+    }
+
+    // 更新用户信息
+    public User updateUserInfo(String username, String nickname, String avatar) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 更新非空字段
+        if (nickname != null && !nickname.isEmpty()) {
+            user.setNickname(nickname);
+        }
+        
+        if (avatar != null) {
+            user.setAvatar(avatar);
+        }
+
+        // 保存更新后的用户信息
+        return userRepository.save(user);
     }
 }

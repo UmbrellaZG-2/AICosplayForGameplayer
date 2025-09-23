@@ -13,12 +13,20 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.aicosplay.config.CustomAuthenticationFilter;
+
 import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private final CustomAuthenticationFilter customAuthenticationFilter;
+    
+    public SecurityConfig(CustomAuthenticationFilter customAuthenticationFilter) {
+        this.customAuthenticationFilter = customAuthenticationFilter;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -34,7 +42,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .anyRequest().authenticated()
-            );
+            )
+            // 添加自定义认证过滤器，在UsernamePasswordAuthenticationFilter之前执行
+            .addFilterBefore(customAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

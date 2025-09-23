@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "messages")
+@Table(name = "message")
 public class Message {
 
     @Id
@@ -18,7 +18,7 @@ public class Message {
     private Conversation conversation;
 
     @Column(name = "sender_type", nullable = false)
-    private String senderType; // 'user' or 'ai'
+    private Integer senderType; // 1-用户，2-AI
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;

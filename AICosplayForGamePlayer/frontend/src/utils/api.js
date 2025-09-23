@@ -2,8 +2,9 @@ import axios from 'axios'
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '',
   timeout: 10000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -52,18 +53,18 @@ api.interceptors.response.use(
 
 // 认证相关API
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  register: (userData) => api.post('/auth/register', userData)
+  login: (credentials) => api.post('/api/auth/login', credentials),
+  register: (userData) => api.post('/api/auth/register', userData)
 }
 
 // 对话相关API
 export const conversationAPI = {
-  create: (title) => api.post('/conversations', { title }),
-  getAll: () => api.get('/conversations'),
-  getById: (id) => api.get(`/conversations/${id}`),
-  delete: (id) => api.delete(`/conversations/${id}`),
-  getMessages: (id) => api.get(`/conversations/${id}/messages`),
-  addMessage: (id, message) => api.post(`/conversations/${id}/messages`, message)
+  create: (title) => api.post('/api/conversations', { title }),
+  getAll: () => api.get('/api/conversations'),
+  getById: (id) => api.get(`/api/conversations/${id}`),
+  delete: (id) => api.delete(`/api/conversations/${id}`),
+  getMessages: (id) => api.get(`/api/conversations/${id}/messages`),
+  addMessage: (id, message) => api.post(`/api/conversations/${id}/messages`, message)
 }
 
 export default api

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpSession;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -44,6 +45,60 @@ public class AuthController {
         }
     }
 
+    // 获取用户信息
+    @GetMapping("/user")
+    public ResponseEntity<?> getUserInfo(HttpSession session) {
+        String username = (String) session.getAttribute("username");
+        if (username == null) {
+            return ResponseEntity.status(401).body(new ApiResponse(false, "User not authenticated"));
+        }
+        
+        Optional<User> user = userService.findByUsername(username);
+        if (user.isPresent()) {
+            // 创建用户信息响应对象，不包含密码等敏感信息
+            UserResponse userResponse = new UserResponse();
+            userResponse.setId(user.get().getId());
+            userResponse.setUsername(user.get().getUsername());
+            userResponse.setEmail(user.get().getEmail());
+            userResponse.setNickname(user.get().getNickname());
+            userResponse.setAvatar(user.get().getAvatar());
+            userResponse.setStatus(user.get().getStatus());
+            userResponse.setCreatedAt(user.get().getCreatedAt().toString());
+            userResponse.setUpdatedAt(user.get().getUpdatedAt().toString());
+
+            
+            return ResponseEntity.ok(userResponse);
+        } else {
+            return ResponseEntity.status(404).body(new ApiResponse(false, "User not found"));
+        }
+    }
+
+    // 更新用户信息
+    @PutMapping("/user")
+    public ResponseEntity<?> updateUserInfo(@RequestBody UserUpdateRequest request, HttpSession session) {
+        String username = (String) session.getAttribute("username");
+        if (username == null) {
+            return ResponseEntity.status(401).body(new ApiResponse(false, "User not authenticated"));
+        }
+        
+        try {
+            User updatedUser = userService.updateUserInfo(username, request.getNickname(), request.getAvatar());
+            UserResponse userResponse = new UserResponse();
+            userResponse.setId(updatedUser.getId());
+            userResponse.setUsername(updatedUser.getUsername());
+            userResponse.setEmail(updatedUser.getEmail());
+            userResponse.setNickname(updatedUser.getNickname());
+            userResponse.setAvatar(updatedUser.getAvatar());
+            userResponse.setStatus(updatedUser.getStatus());
+            userResponse.setCreatedAt(updatedUser.getCreatedAt().toString());
+            userResponse.setUpdatedAt(updatedUser.getUpdatedAt().toString());
+            
+            return ResponseEntity.ok(userResponse);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
+        }
+    }
+
     // 请求和响应DTO类
     public static class RegisterRequest {
         private String username;
@@ -68,6 +123,54 @@ public class AuthController {
         public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+    }
+
+    public static class UserUpdateRequest {
+        private String nickname;
+        private String avatar;
+
+        // Getters and Setters
+        public String getNickname() { return nickname; }
+        public void setNickname(String nickname) { this.nickname = nickname; }
+        
+        public String getAvatar() { return avatar; }
+        public void setAvatar(String avatar) { this.avatar = avatar; }
+    }
+
+    public static class UserResponse {
+        private Long id;
+        private String username;
+        private String email;
+        private String nickname;
+        private String avatar;
+        private Integer status;
+        private String createdAt;
+        private String updatedAt;
+
+        // Getters and Setters
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        
+        public String getNickname() { return nickname; }
+        public void setNickname(String nickname) { this.nickname = nickname; }
+        
+        public String getAvatar() { return avatar; }
+        public void setAvatar(String avatar) { this.avatar = avatar; }
+        
+        public Integer getStatus() { return status; }
+        public void setStatus(Integer status) { this.status = status; }
+        
+        public String getCreatedAt() { return createdAt; }
+        public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+        
+        public String getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
     }
 
     public static class ApiResponse {

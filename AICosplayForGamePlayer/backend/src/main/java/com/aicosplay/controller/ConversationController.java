@@ -3,11 +3,11 @@ package com.aicosplay.controller;
 import com.aicosplay.entity.Conversation;
 import com.aicosplay.entity.Message;
 import com.aicosplay.entity.User;
+import com.aicosplay.repository.ConversationRepository;
 import com.aicosplay.service.ConversationService;
 import com.aicosplay.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -36,7 +36,7 @@ public class ConversationController {
             User user = userService.findByUsername(username)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            Conversation conversation = conversationService.createConversation(user, request.getTitle());
+            Conversation conversation = conversationService.createConversation(user, request.getTitle(), request.getCharacterName());
             return ResponseEntity.ok(conversation);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
@@ -173,23 +173,78 @@ public class ConversationController {
             return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
         }
     }
+    
+    // 恢复已删除的对话
+    @PutMapping("/{id}/restore")
+    public ResponseEntity<?> restoreConversation(@PathVariable Long id, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            // 直接获取对话而不检查是否已删除
+            Conversation conversation = conversationRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Conversation not found"));
+            
+            // 验证对话是否属于当前用户
+            if (!conversation.getUser().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).body(new AuthController.ApiResponse(false, "Access denied"));
+            }
+            
+            conversationService.restoreConversation(id);
+            return ResponseEntity.ok(new AuthController.ApiResponse(true, "Conversation restored successfully"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+    
+    // 获取已删除的对话列表
+    @GetMapping("/deleted")
+    public ResponseEntity<?> getDeletedConversations(HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "User not authenticated"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            List<Conversation> conversations = conversationService.getDeletedConversations(user);
+            return ResponseEntity.ok(conversations);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+
+    @Autowired
+    private ConversationRepository conversationRepository;
 
     // 请求DTO类
     public static class ConversationRequest {
         private String title;
+        private String characterName;
 
         // Getters and Setters
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
+        public String getCharacterName() { return characterName; }
+        public void setCharacterName(String characterName) { this.characterName = characterName; }
     }
 
     public static class MessageRequest {
-        private String senderType;
+        private Integer senderType; // 1-用户，2-AI
         private String content;
 
         // Getters and Setters
-        public String getSenderType() { return senderType; }
-        public void setSenderType(String senderType) { this.senderType = senderType; }
+        public Integer getSenderType() { return senderType; }
+        public void setSenderType(Integer senderType) { this.senderType = senderType; }
         public String getContent() { return content; }
         public void setContent(String content) { this.content = content; }
     }

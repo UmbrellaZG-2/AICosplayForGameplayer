@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "users")
+@Table(name = "user")
 public class User {
 
     @Id
@@ -22,11 +22,20 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Column
+    private String nickname;
+
+    @Column
+    private String avatar;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column
+    private Integer status = 1;
 
     @PrePersist
     protected void onCreate() {

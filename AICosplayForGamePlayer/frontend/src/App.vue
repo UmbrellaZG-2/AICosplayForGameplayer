@@ -7,7 +7,7 @@
         <div class="footer-links">
           <router-link to="/about" class="footer-link">关于我们</router-link>
         </div>
-        <p class="footer-copyright">© 2023 AICosplayForGamePlayer</p>
+        <p class="footer-copyright">© 2025 AICosplayForGamePlayer</p>
       </div>
     </footer>
   </div>
