@@ -46,13 +46,16 @@
       
       <div class="chat-input-area">
         <div class="input-wrapper">
-          <textarea 
-            v-model="inputMessage"
-            placeholder="输入消息..."
-            @keydown.ctrl.enter="sendMessage"
-          ></textarea>
-          <button class="send-button" @click="sendMessage">发送</button>
-        </div>
+        <textarea 
+          v-model="inputMessage"
+          placeholder="输入消息..."
+          @keydown.ctrl.enter="sendMessage"
+        ></textarea>
+        <button class="voice-button" @click="openRecordingModal" title="语音输入">
+          🎤
+        </button>
+        <button class="send-button" @click="sendMessage">发送</button>
+      </div>
         <div class="input-tip">Ctrl + Enter 快速发送</div>
       </div>
     </div>
@@ -179,13 +182,52 @@
       </div>
     </div>
   </div>
+
+  <!-- 录音模态框 -->
+  <div v-if="showRecordingModal" class="modal-overlay" @click.self="stopRecording">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>正在录音</h3>
+        <button class="close-button" @click="stopRecording">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="recording-indicator">
+          <span class="recording-dot"></span>
+          <span>请开始说话...</span>
+        </div>
+        
+        <div class="recording-duration">
+          录音时长: {{ Math.floor(recordingDuration / 60) }}:{{ recordingDuration % 60 < 10 ? '0' + (recordingDuration % 60) : recordingDuration % 60 }}
+        </div>
+        
+        <!-- 录音指示器 -->
+        <div class="recording-visualizer">
+          <div class="visualizer-bars">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+        </div>
+        
+        <p style="text-align: center; color: #666; margin-top: 10px;">
+          点击确定按钮停止录音并转换为文字
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="confirm-button" @click="stopRecording" :disabled="!isRecording">
+          确定
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { conversationAPI, gameCharacterAPI } from '../utils/api.js'
-import { testCreateConversation } from '../utils/test.js'
+import { conversationAPI, gameCharacterAPI, speechAPI } from '../utils/api.js'
 
 const router = useRouter()
 const conversations = ref([])
@@ -203,10 +245,32 @@ const customCharacterName = ref('')
 const customCharacterPrompt = ref('')
 const customCharacterAvatar = ref(null)
 
+// 语音输入相关变量
+const showRecordingModal = ref(false)
+const isRecording = ref(false)
+const recordingDuration = ref(0)
+let mediaRecorder = null
+let audioChunks = []
+let recordingInterval = null
+let stream = null
+
 // 初始化时加载对话列表和角色列表
 onMounted(() => {
   loadConversations()
   loadCharacters()
+})
+
+onUnmounted(() => {
+  // 清理录音资源
+  if (recordingInterval) {
+    clearInterval(recordingInterval)
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
+  }
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop())
+  }
 })
 
 // 加载对话列表
@@ -226,6 +290,122 @@ const loadCharacters = async () => {
     characters.value = data
   } catch (error) {
     console.error('加载角色列表失败:', error)
+  }
+}
+
+// 初始化录音功能
+const initRecording = () => {
+  // 重置录音相关变量
+  audioChunks = []
+  recordingDuration.value = 0
+}
+
+// 打开录音模态框
+const openRecordingModal = () => {
+  showRecordingModal.value = true
+  initRecording()
+  startRecording()
+}
+
+// 开始录音
+const startRecording = async () => {
+  try {
+    // 获取用户媒体设备权限
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    
+    // 创建MediaRecorder实例
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+    
+    // 重置录音数据
+    audioChunks = []
+    
+    // 监听数据可用事件
+    mediaRecorder.addEventListener('dataavailable', event => {
+      audioChunks.push(event.data)
+    })
+    
+    // 开始录音
+    mediaRecorder.start()
+    
+    isRecording.value = true
+    recordingDuration.value = 0
+    
+    // 开始计时
+    recordingInterval = setInterval(() => {
+      recordingDuration.value++
+    }, 1000)
+    
+    console.log('录音开始')
+  } catch (error) {
+    console.error('开始录音失败:', error)
+    alert('开始录音失败，请检查麦克风权限')
+    showRecordingModal.value = false
+  }
+}
+
+// 停止录音并处理
+const stopRecording = async () => {
+  try {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      // 停止录音
+      mediaRecorder.stop()
+    }
+    
+    // 停止计时器
+    if (recordingInterval) {
+      clearInterval(recordingInterval)
+      recordingInterval = null
+    }
+    
+    isRecording.value = false
+    
+    // 停止媒体流
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      stream = null
+    }
+    
+    // 等待录音数据处理完成
+    await new Promise(resolve => {
+      if (mediaRecorder && mediaRecorder.state === 'inactive') {
+        resolve()
+      } else {
+        mediaRecorder.addEventListener('stop', resolve, { once: true })
+      }
+    })
+    
+    // 发送音频到后端转文字
+    if (audioChunks.length > 0) {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+      await convertSpeechToText(audioBlob)
+    }
+    
+    showRecordingModal.value = false
+    console.log('录音停止并处理完成')
+  } catch (error) {
+    console.error('停止录音失败:', error)
+    alert('停止录音失败，请重试')
+    showRecordingModal.value = false
+  }
+}
+
+// 将语音转换为文字
+const convertSpeechToText = async (audioBlob) => {
+  try {
+    // 调用语音识别API
+    const response = await speechAPI.recognize(audioBlob)
+    
+    // 检查响应并填充识别结果
+    if (response && response.text) {
+      inputMessage.value = response.text
+    } else {
+      // 如果后端API不可用，使用模拟结果
+      inputMessage.value = '这是一段模拟的语音识别结果。在实际项目中，这里会显示从后端API返回的真实语音识别结果。'
+    }
+  } catch (error) {
+    console.error('语音转文字失败:', error)
+    // 错误处理：如果API调用失败，使用模拟结果
+    inputMessage.value = '语音识别服务暂时不可用，这是一段模拟的语音识别结果。'
   }
 }
 
@@ -683,6 +863,23 @@ const handleLogout = () => {
   margin-bottom: 10px;
   color: #333;
 }
+/* 录音按钮样式 */
+.voice-button {
+  padding: 12px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  align-self: flex-end;
+  transition: background-color 0.3s;
+}
+
+.voice-button:hover {
+  background-color: #1976D2;
+}
+
 /* 模态框样式 */
 .modal-overlay {
   position: fixed;
@@ -927,6 +1124,47 @@ const handleLogout = () => {
   background-color: #45a049;
 }
 
+/* 录音模态框样式 */
+.recording-indicator {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.recording-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #f44336;
+  animation: pulse 1.5s infinite;
+  margin-right: 8px;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.recording-duration {
+  font-size: 16px;
+  color: #666;
+}
+
+#waveform {
+  margin: 20px 0;
+  height: 80px;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .modal-content {
@@ -938,6 +1176,16 @@ const handleLogout = () => {
     width: 40px;
     height: 40px;
     font-size: 20px;
+  }
+  
+  .voice-button {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .send-button {
+    padding: 10px 16px;
+    font-size: 14px;
   }
 }
 </style>

@@ -73,4 +73,19 @@ export const gameCharacterAPI = {
   create: (characterData) => api.post('/api/characters', characterData)
 }
 
+// 语音识别相关API
+export const speechAPI = {
+  // 发送音频文件进行语音识别
+  recognize: (audioBlob) => {
+    const formData = new FormData()
+    formData.append('audio', audioBlob)
+    return api.post('/api/speech/recognize', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 30000 // 语音识别可能需要更长时间
+    })
+  }
+}
+
 export default api
