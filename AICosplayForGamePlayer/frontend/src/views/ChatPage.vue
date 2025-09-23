@@ -90,10 +90,9 @@
                 <!-- 从指定文件夹读取角色头像 -->
                 <img 
                   v-if="character.name" 
-                  :src="`/image/Character/${character.name}.jpg`" 
+                  :src="`/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="this.src = `/image/Character/${character.name}.png`"
-                  @error.once="this.src = '🎭'"
+                  @error="(e) => { e.target.onerror = null; e.target.src = `/Character/${character.name}.png` }"
                 >
                 <span v-else>🎭</span>
               </div>
@@ -120,10 +119,9 @@
                 <!-- 从指定文件夹读取角色头像 -->
                 <img 
                   v-if="character.name" 
-                  :src="`/image/Character/${character.name}.jpg`" 
+                  :src="`/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="this.src = `/image/Character/${character.name}.png`"
-                  @error.once="this.src = '🎭'"
+                  @error="(e) => { e.target.onerror = null; e.target.src = `/Character/${character.name}.png` }"
                 >
                 <span v-else>🎭</span>
               </div>
