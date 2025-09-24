@@ -95,9 +95,23 @@
                   v-if="character.name" 
                   :src="`/resource/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="(e) => { e.target.onerror = null; e.target.src = `/resource/Character/${character.name}.png` }"
+                  @error="(e) => {
+                    e.target.onerror = null;
+                    // 尝试加载PNG格式
+                    e.target.src = `/resource/Character/${character.name}.png`;
+                    e.target.onerror = (err) => {
+                      err.target.onerror = null;
+                      // 如果PNG也加载失败，才显示默认头像
+                      err.target.style.display = 'none';
+                      const defaultAvatar = err.target.nextElementSibling;
+                      if (defaultAvatar) {
+                        defaultAvatar.textContent = '😓';
+                        defaultAvatar.style.display = 'block';
+                      }
+                    };
+                  }"
                 >
-                <span v-else>🎭</span>
+                <span style="display: none;">😓</span>
               </div>
               <div class="character-info">
                 <div class="character-name">{{ character.name }}</div>
@@ -124,9 +138,23 @@
                   v-if="character.name" 
                   :src="`/resource/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="(e) => { e.target.onerror = null; e.target.src = `/resource/Character/${character.name}.png` }"
+                  @error="(e) => {
+                    e.target.onerror = null;
+                    // 尝试加载PNG格式
+                    e.target.src = `/resource/Character/${character.name}.png`;
+                    e.target.onerror = (err) => {
+                      err.target.onerror = null;
+                      // 如果PNG也加载失败，才显示默认头像
+                      err.target.style.display = 'none';
+                      const defaultAvatar = err.target.nextElementSibling;
+                      if (defaultAvatar) {
+                        defaultAvatar.textContent = '😓';
+                        defaultAvatar.style.display = 'block';
+                      }
+                    };
+                  }"
                 >
-                <span v-else>🎭</span>
+                <span style="display: none;">😓</span>
               </div>
               <div class="character-info">
                 <div class="character-name">{{ character.name }}</div>
@@ -162,15 +190,37 @@
             </div>
             
             <div class="form-group">
+              <label>预设prompt</label>
+              <textarea 
+                v-model="customCharacterPresetPrompt" 
+                placeholder="请输入预设的对话提示内容"
+                rows="3"
+              ></textarea>
+            </div>
+            <div class="form-group">
               <label>角色头像</label>
               <input 
                 type="file" 
                 accept="image/*" 
                 @change="handleAvatarUpload"
+                style="display: none;"
+                ref="avatarInput"
               >
-              <div v-if="customCharacterAvatar" class="file-name">
-                {{ customCharacterAvatar.name }}
+              <div class="avatar-upload-container">
+                <div class="avatar-preview" @click="$refs.avatarInput.click()">
+                  <img v-if="avatarPreviewUrl" :src="avatarPreviewUrl" class="preview-image">
+                  <div v-else class="avatar-placeholder">
+                    <span>+ 上传头像</span>
+                  </div>
+                </div>
+                <div class="avatar-upload-text" @click="$refs.avatarInput.click()">
+                  点击选择图片
+                </div>
               </div>
+              <div v-if="customCharacterAvatar" class="file-name">
+                {{ customCharacterAvatar.name }} ({{ formatFileSize(customCharacterAvatar.size) }})
+              </div>
+              <div v-if="avatarError" class="error-message">{{ avatarError }}</div>
             </div>
           </div>
         </div>
@@ -243,7 +293,12 @@ const selectedCharacterId = ref(null)
 const showCustomCharacterForm = ref(false)
 const customCharacterName = ref('')
 const customCharacterPrompt = ref('')
+const customCharacterPresetPrompt = ref('')
 const customCharacterAvatar = ref(null)
+const avatarPreviewUrl = ref('')
+const avatarError = ref('')
+const avatarInput = ref(null)
+const maxFileSize = 2 * 1024 * 1024; // 2MB
 
 // 语音输入相关变量
 const showRecordingModal = ref(false)
@@ -432,18 +487,77 @@ const toggleCustomCharacterForm = () => {
 
 // 处理头像上传
 const handleAvatarUpload = (event) => {
-  customCharacterAvatar.value = event.target.files[0]
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // 重置错误信息
+  avatarError.value = ''
+  
+  // 检查文件大小
+  if (file.size > maxFileSize) {
+    avatarError.value = `文件大小不能超过 ${formatFileSize(maxFileSize)}`
+    customCharacterAvatar.value = null
+    avatarPreviewUrl.value = ''
+    return
+  }
+  
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = '请选择图片文件'
+    customCharacterAvatar.value = null
+    avatarPreviewUrl.value = ''
+    return
+  }
+  
+  // 创建预览
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    avatarPreviewUrl.value = e.target.result
+    customCharacterAvatar.value = file
+  }
+  reader.readAsDataURL(file)
+}
+
+// 格式化文件大小
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 // 创建自定义角色并创建对话
 const createCustomCharacterAndChat = async () => {
   try {
+    // 表单验证
+    if (!customCharacterName.value.trim()) {
+      alert('请输入角色名称')
+      return
+    }
+    
+    if (!customCharacterPrompt.value.trim()) {
+      alert('请输入角色描述')
+      return
+    }
+    
+    if (!customCharacterPresetPrompt.value.trim()) {
+      alert('请输入预设prompt')
+      return
+    }
+    
     // 先创建自定义角色
     const formData = new FormData()
     formData.append('name', customCharacterName.value)
     formData.append('prompt', customCharacterPrompt.value)
+    formData.append('presetPrompt', customCharacterPresetPrompt.value)
     if (customCharacterAvatar.value) {
       formData.append('avatar', customCharacterAvatar.value)
+    } else {
+      // 添加标志让后端知道使用默认头像
+      formData.append('useDefaultAvatar', 'true')
     }
     
     const newCharacter = await gameCharacterAPI.create(formData)
@@ -1090,28 +1204,84 @@ const handleLogout = () => {
   background-color: white;
 }
 
-.file-name {
-  margin-top: 8px;
-  font-size: 14px;
-  color: #666;
+.avatar-upload-container {
+  text-align: center;
+  margin-bottom: 12px;
 }
 
+.avatar-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px dashed #ccc;
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #f9f9f9;
+}
+
+.avatar-preview:hover {
+  border-color: #4CAF50;
+  background-color: #f0f8f0;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.avatar-placeholder {
+  color: #999;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.avatar-upload-text {
+  color: #4CAF50;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.avatar-upload-text:hover {
+  color: #45a049;
+  text-decoration: underline;
+}
+
+.error-message {
+  color: #f44336;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* 模态框底部按钮样式 */
 .modal-footer {
-  padding: 16px 24px;
+  padding: 20px 24px;
   border-top: 1px solid #e0e0e0;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
 }
 
-.cancel-button,
-.confirm-button {
-  padding: 10px 20px;
+/* 按钮样式 */
+.confirm-button,
+.cancel-button {
+  padding: 12px 24px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s;
+  background-color: #4CAF50;
+  color: white;
 }
 
 .cancel-button {
@@ -1119,17 +1289,16 @@ const handleLogout = () => {
   color: #333;
 }
 
-.cancel-button:hover {
-  background-color: #e0e0e0;
-}
-
-.confirm-button {
-  background-color: #4CAF50;
-  color: white;
-}
-
 .confirm-button:hover {
   background-color: #45a049;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.2);
+}
+
+.cancel-button:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* 录音模态框样式 */
