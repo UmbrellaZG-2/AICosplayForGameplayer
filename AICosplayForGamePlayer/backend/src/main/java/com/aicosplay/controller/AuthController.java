@@ -8,6 +8,31 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpSession;
 import java.util.Optional;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+
+// 临时存储验证码的内存缓存
+class VerificationCodeCache {
+    private static final ConcurrentHashMap<String, String> cache = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> expirationTimeCache = new ConcurrentHashMap<>();
+    private static final long EXPIRATION_TIME = 5 * 60 * 1000; // 5分钟过期
+
+    public static void put(String email, String code) {
+        cache.put(email, code);
+        expirationTimeCache.put(email, System.currentTimeMillis() + EXPIRATION_TIME);
+    }
+
+    public static String get(String email) {
+        // 检查是否过期
+        Long expirationTime = expirationTimeCache.get(email);
+        if (expirationTime != null && System.currentTimeMillis() > expirationTime) {
+            cache.remove(email);
+            expirationTimeCache.remove(email);
+            return null;
+        }
+        return cache.get(email);
+    }
+}
 
 @RestController
 @RequestMapping("/api/auth")
@@ -16,14 +41,54 @@ public class AuthController {
     @Autowired
     private UserService userService;
 
+    // 生成验证码
+    @PostMapping("/generate-code")
+    public ResponseEntity<?> generateVerificationCode(@RequestBody EmailRequest emailRequest) {
+        try {
+            // 检查邮箱是否已注册
+            if (userService.existsByEmail(emailRequest.getEmail())) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "邮箱已被注册"));
+            }
+            
+            // 生成6位数字验证码
+            Random random = new Random();
+            int codeInt = 100000 + random.nextInt(900000); // 生成100000-999999之间的随机数
+            String code = String.valueOf(codeInt);
+            
+            // 存储验证码
+            VerificationCodeCache.put(emailRequest.getEmail(), code);
+            
+            // 打印验证码到控制台
+            System.out.println("生成的验证码：" + code + " 用于邮箱：" + emailRequest.getEmail());
+            
+            return ResponseEntity.ok(new ApiResponse(true, "验证码已发送"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "生成验证码失败"));
+        }
+    }
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
         try {
+            // 验证验证码
+            String storedCode = VerificationCodeCache.get(registerRequest.getEmail());
+            if (storedCode == null) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码已过期或不存在"));
+            }
+            
+            if (!storedCode.equals(registerRequest.getVerificationCode())) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码错误"));
+            }
+            
             User user = userService.registerUser(
                     registerRequest.getUsername(),
                     registerRequest.getEmail(),
                     registerRequest.getPassword()
             );
+            
+            // 注册成功后移除验证码
+            VerificationCodeCache.put(registerRequest.getEmail(), null);
+            
             return ResponseEntity.ok(new ApiResponse(true, "注册成功"));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
@@ -100,10 +165,19 @@ public class AuthController {
     }
 
     // 请求和响应DTO类
+    public static class EmailRequest {
+        private String email;
+
+        // Getters and Setters
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+    }
+    
     public static class RegisterRequest {
         private String username;
         private String email;
         private String password;
+        private String verificationCode;
 
         // Getters and Setters
         public String getUsername() { return username; }
@@ -112,6 +186,8 @@ public class AuthController {
         public void setEmail(String email) { this.email = email; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+        public String getVerificationCode() { return verificationCode; }
+        public void setVerificationCode(String verificationCode) { this.verificationCode = verificationCode; }
     }
 
     public static class LoginRequest {

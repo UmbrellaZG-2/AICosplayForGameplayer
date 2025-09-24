@@ -54,7 +54,8 @@ api.interceptors.response.use(
 // 认证相关API
 export const authAPI = {
   login: (credentials) => api.post('/api/auth/login', credentials),
-  register: (userData) => api.post('/api/auth/register', userData)
+  register: (userData) => api.post('/api/auth/register', userData),
+  generateVerificationCode: (email) => api.post('/api/auth/generate-code', { email })
 }
 
 // 对话相关API

@@ -72,4 +72,9 @@ public class UserService {
         // 保存更新后的用户信息
         return userRepository.save(user);
     }
+    
+    // 检查邮箱是否已存在
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmail(email);
+    }
 }
