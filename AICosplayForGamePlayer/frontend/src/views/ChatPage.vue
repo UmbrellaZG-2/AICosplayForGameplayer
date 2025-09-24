@@ -93,15 +93,15 @@
                 <!-- 从指定文件夹读取角色头像 -->
                 <img 
                   v-if="character.name" 
-                  :src="`/Character/${character.name}.jpg`" 
+                  :src="`/resource/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="(e) => { e.target.onerror = null; e.target.src = `/Character/${character.name}.png` }"
+                  @error="(e) => { e.target.onerror = null; e.target.src = `/resource/Character/${character.name}.png` }"
                 >
                 <span v-else>🎭</span>
               </div>
               <div class="character-info">
                 <div class="character-name">{{ character.name }}</div>
-                <div class="character-desc">{{ character.prompt.substring(0, 30) }}...</div>
+                <div class="character-desc">{{ character.description.substring(0, 30) }}...</div>
               </div>
             </div>
           </div>
@@ -122,15 +122,15 @@
                 <!-- 从指定文件夹读取角色头像 -->
                 <img 
                   v-if="character.name" 
-                  :src="`/Character/${character.name}.jpg`" 
+                  :src="`/resource/Character/${character.name}.jpg`" 
                   :alt="character.name"
-                  @error="(e) => { e.target.onerror = null; e.target.src = `/Character/${character.name}.png` }"
+                  @error="(e) => { e.target.onerror = null; e.target.src = `/resource/Character/${character.name}.png` }"
                 >
                 <span v-else>🎭</span>
               </div>
               <div class="character-info">
                 <div class="character-name">{{ character.name }}</div>
-                <div class="character-desc">{{ character.prompt.substring(0, 30) }}...</div>
+                <div class="character-desc">{{ character.description.substring(0, 30) }}...</div>
               </div>
             </div>
           </div>
@@ -984,15 +984,23 @@ const handleLogout = () => {
 }
 
 .character-avatar {
-  width: 48px;
-  height: 48px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background-color: #e0e0e0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 16px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.character-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .character-info {
@@ -1173,9 +1181,9 @@ const handleLogout = () => {
   }
   
   .character-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
   }
   
   .voice-button {
