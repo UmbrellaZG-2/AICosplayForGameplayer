@@ -29,6 +29,9 @@
         <span>还没有账号？</span>
         <router-link to="/register">立即注册</router-link>
       </div>
+      <div class="forgot-password-link">
+        <router-link to="/forgot-password">忘记密码？</router-link>
+      </div>
       <div v-if="error" class="error-message">{{ error }}</div>
     </div>
   </div>
@@ -140,8 +143,23 @@ const handleLogin = async () => {
 }
 
 .error-message {
-  margin-top: 15px;
-  color: #f44336;
-  text-align: center;
-}
+    margin-top: 15px;
+    color: #f44336;
+    text-align: center;
+  }
+  
+  .forgot-password-link {
+    text-align: center;
+    margin-top: 10px;
+  }
+  
+  .forgot-password-link a {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  
+  .forgot-password-link a:hover {
+    text-decoration: underline;
+  }
 </style>

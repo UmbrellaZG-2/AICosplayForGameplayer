@@ -40,6 +40,8 @@ api.interceptors.response.use(
         localStorage.removeItem('isLoggedIn')
         window.location.href = '/'
       }
+      // 将后端返回的错误数据返回给调用方
+      return Promise.reject(error.response.data)
     } else if (error.request) {
       // 请求发出但没有收到响应
       console.error('Network Error:', error.request)
@@ -57,7 +59,11 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials) => api.post('/api/auth/login', credentials),
   register: (userData) => api.post('/api/auth/register', userData),
-  generateVerificationCode: (email) => api.post('/api/auth/generate-code', { email })
+  generateVerificationCode: (email) => api.post('/api/auth/generate-code', { email }),
+  checkUsername: (username) => api.post('/api/auth/check-username', { username }),
+  checkEmail: (email) => api.post('/api/auth/check-email', { email }),
+  verifyUserEmail: (username, email) => api.post('/api/auth/verify-user-email', { username, email }),
+  resetPassword: (data) => api.post('/api/auth/reset-password', data)
 }
 
 // 对话相关API

@@ -16,6 +16,11 @@ const routes = [
     component: RegisterPage
   },
   {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: () => import('../views/ForgotPasswordPage.vue')
+  },
+  {
     path: '/chat',
     name: 'chat',
     component: ChatPage,

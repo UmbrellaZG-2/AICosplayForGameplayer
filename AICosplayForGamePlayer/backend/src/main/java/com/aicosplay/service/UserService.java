@@ -1,6 +1,9 @@
 package com.aicosplay.service;
 
 import com.aicosplay.entity.User;
+import com.aicosplay.exception.EmailAlreadyExistsException;
+import com.aicosplay.exception.UserNotFoundException;
+import com.aicosplay.exception.UsernameAlreadyExistsException;
 import com.aicosplay.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,12 +24,12 @@ public class UserService {
     public User registerUser(String username, String email, String password) {
         // 检查用户名是否已存在
         if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("用户名重复");
+            throw new UsernameAlreadyExistsException();
         }
         
         // 检查邮箱是否已存在
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("邮箱重复");
+            throw new EmailAlreadyExistsException();
         }
 
         // 创建新用户
@@ -68,7 +71,7 @@ public class UserService {
     // 更新用户信息
     public User updateUserInfo(String username, String nickname, String avatar) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException());
 
         // 更新非空字段
         if (nickname != null && !nickname.isEmpty()) {
@@ -91,5 +94,18 @@ public class UserService {
     // 检查用户名是否已存在
     public boolean existsByUsername(String username) {
         return userRepository.existsByUsername(username);
+    }
+    
+    // 更新用户密码
+    @Transactional(rollbackFor = Exception.class)
+    public User updatePassword(Long userId, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException());
+        
+        // 加密新密码并更新
+        user.setPassword(passwordEncoder.encode(newPassword));
+        
+        // 保存更新后的用户信息
+        return userRepository.save(user);
     }
 }

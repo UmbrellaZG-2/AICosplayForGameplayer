@@ -9,9 +9,19 @@
             type="text"
             id="username"
             v-model="form.username"
+            @input="handleUsernameInput"
             required
             placeholder="请设置用户名"
           />
+          <div v-if="usernameChecking" class="username-status checking">
+            正在检查用户名可用性...
+          </div>
+          <div v-else-if="usernameStatus === 'available'" class="username-status available">
+            用户名可用
+          </div>
+          <div v-else-if="usernameStatus === 'taken'" class="username-status taken">
+            用户名已被使用
+          </div>
         </div>
         <div class="form-group">
           <label for="email">邮箱</label>
@@ -19,9 +29,19 @@
             type="email"
             id="email"
             v-model="form.email"
+            @input="handleEmailInput"
             required
             placeholder="请输入邮箱"
           />
+          <div v-if="emailChecking" class="email-status checking">
+            正在检查邮箱可用性...
+          </div>
+          <div v-else-if="emailStatus === 'available'" class="email-status available">
+            邮箱可用
+          </div>
+          <div v-else-if="emailStatus === 'taken'" class="email-status taken">
+            邮箱已被使用
+          </div>
         </div>
         <div class="form-group">
           <label for="verificationCode">验证码</label>
@@ -55,7 +75,7 @@
             placeholder="请设置密码"
           />
         </div>
-        <button type="submit" class="register-button">注册</button>
+        <button type="submit" class="register-button" :disabled="!isFormValid">注册</button>
       </form>
       <div class="login-link">
         <span>已有账号？</span>
@@ -75,7 +95,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '../utils/api.js'
 import Notification from '../components/Notification.vue'
@@ -98,6 +118,106 @@ const notificationTitle = ref('')
 const notificationMessage = ref('')
 const notificationType = ref('') // success, usernameDuplicate, emailDuplicate
 
+// 计算表单是否有效
+const isFormValid = computed(() => {
+  return form.value.username.trim() &&
+         form.value.email.trim() &&
+         form.value.password.trim() &&
+         form.value.verificationCode.trim() &&
+         usernameStatus.value === 'available' &&
+         emailStatus.value === 'available'
+})
+
+// 用户名检查状态
+const usernameStatus = ref('') // available, taken
+const usernameChecking = ref(false)
+let usernameCheckTimer = null
+
+// 邮箱检查状态
+const emailStatus = ref('') // available, taken
+const emailChecking = ref(false)
+let emailCheckTimer = null
+
+// 处理用户名输入，添加防抖
+const handleUsernameInput = () => {
+  // 清除之前的定时器
+  if (usernameCheckTimer) {
+    clearTimeout(usernameCheckTimer)
+  }
+  
+  // 如果用户名不为空，设置新的定时器
+  if (form.value.username.trim()) {
+    usernameStatus.value = ''
+    usernameCheckTimer = setTimeout(() => {
+      checkUsername(form.value.username)
+    }, 500) // 500毫秒防抖
+  } else {
+    usernameStatus.value = ''
+  }
+}
+
+// 处理邮箱输入，添加防抖
+const handleEmailInput = () => {
+  // 清除之前的定时器
+  if (emailCheckTimer) {
+    clearTimeout(emailCheckTimer)
+  }
+  
+  // 如果邮箱不为空，设置新的定时器
+  if (form.value.email.trim()) {
+    emailStatus.value = ''
+    emailCheckTimer = setTimeout(() => {
+      checkEmail(form.value.email)
+    }, 500) // 500毫秒防抖
+  } else {
+    emailStatus.value = ''
+  }
+}
+
+// 检查用户名是否可用
+const checkUsername = async (username) => {
+  if (!username.trim()) {
+    return
+  }
+  
+  usernameChecking.value = true
+  try {
+    const response = await authAPI.checkUsername(username)
+    if (response.success) {
+      usernameStatus.value = 'available'
+    } else {
+      usernameStatus.value = 'taken'
+    }
+  } catch (err) {
+    console.error('检查用户名失败:', err)
+    usernameStatus.value = 'taken'
+  } finally {
+    usernameChecking.value = false
+  }
+}
+
+// 检查邮箱是否可用
+const checkEmail = async (email) => {
+  if (!email.trim()) {
+    return
+  }
+  
+  emailChecking.value = true
+  try {
+    const response = await authAPI.checkEmail(email)
+    if (response.success) {
+      emailStatus.value = 'available'
+    } else {
+      emailStatus.value = 'taken'
+    }
+  } catch (err) {
+    console.error('检查邮箱失败:', err)
+    emailStatus.value = 'taken'
+  } finally {
+    emailChecking.value = false
+  }
+}
+
 // 处理获取验证码
 const handleGetVerificationCode = async () => {
   try {
@@ -112,14 +232,22 @@ const handleGetVerificationCode = async () => {
       notificationType.value = 'verificationSuccess'
       showNotification.value = true
     } else {
-      notificationTitle.value = '获取验证码失败'
-      notificationMessage.value = response.message
-      notificationType.value = 'error'
+      // 特定处理邮箱已被注册的错误
+      if (response.message === '邮箱已被注册') {
+        notificationTitle.value = '邮箱已被使用'
+        notificationMessage.value = '该邮箱已被使用，请尝试其他邮箱。'
+        notificationType.value = 'emailDuplicate'
+      } else {
+        notificationTitle.value = '获取验证码失败'
+        notificationMessage.value = response.message
+        notificationType.value = 'error'
+      }
       showNotification.value = true
     }
   } catch (err) {
     notificationTitle.value = '获取验证码失败'
-    notificationMessage.value = '获取验证码失败，请检查网络或服务器状态'
+    // 尝试显示err对象中的message属性，如果存在
+    notificationMessage.value = err && err.message ? err.message : '获取验证码失败，请检查网络或服务器状态'
     notificationType.value = 'error'
     showNotification.value = true
   }
@@ -152,13 +280,13 @@ const handleRegister = async () => {
       showNotification.value = true
     } else {
         // 根据错误信息显示不同的通知
-        if (response.message === '用户名重复') {
+        if (response.message === '用户名已被使用') {
           notificationTitle.value = '用户名重复'
           notificationMessage.value = '该用户名已被注册，请尝试其他用户名。'
           notificationType.value = 'usernameDuplicate'
-        } else if (response.message === '邮箱重复') {
-          notificationTitle.value = '邮箱重复'
-          notificationMessage.value = '该邮箱已被注册，请尝试其他邮箱。'
+        } else if (response.message === '邮箱已被使用') {
+          notificationTitle.value = '邮箱已被使用'
+          notificationMessage.value = '该邮箱已被使用，请尝试其他邮箱。'
           notificationType.value = 'emailDuplicate'
         } else if (response.message === '验证码错误') {
           notificationTitle.value = '验证码错误'
@@ -239,6 +367,40 @@ const handleNotificationConfirm = () => {
 .form-group input:focus {
   outline: none;
   border-color: #4CAF50;
+}
+
+.username-status {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.username-status.checking {
+  color: #999;
+}
+
+.username-status.available {
+  color: #4CAF50;
+}
+
+.username-status.taken {
+  color: #f44336;
+}
+
+.email-status {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.email-status.checking {
+  color: #999;
+}
+
+.email-status.available {
+  color: #4CAF50;
+}
+
+.email-status.taken {
+  color: #f44336;
 }
 
 .register-button {
