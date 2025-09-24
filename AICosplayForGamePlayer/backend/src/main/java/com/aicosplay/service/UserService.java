@@ -5,6 +5,7 @@ import com.aicosplay.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
 @Service
@@ -16,6 +17,7 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Transactional
     public User registerUser(String username, String email, String password) {
         // 检查用户名是否已存在
         if (userRepository.existsByUsername(username)) {
@@ -76,5 +78,10 @@ public class UserService {
     // 检查邮箱是否已存在
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
+    }
+    
+    // 检查用户名是否已存在
+    public boolean existsByUsername(String username) {
+        return userRepository.existsByUsername(username);
     }
 }

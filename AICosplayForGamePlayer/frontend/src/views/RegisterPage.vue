@@ -79,7 +79,6 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authAPI } from '../utils/api.js'
 import Notification from '../components/Notification.vue'
-import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const form = ref({
@@ -110,7 +109,7 @@ const handleGetVerificationCode = async () => {
       
       notificationTitle.value = '验证码已发送'
       notificationMessage.value = '验证码已发送到控制台，请查看控制台获取验证码。'
-      notificationType.value = 'success'
+      notificationType.value = 'verificationSuccess'
       showNotification.value = true
     } else {
       notificationTitle.value = '获取验证码失败'
@@ -148,7 +147,7 @@ const handleRegister = async () => {
     if (response.success) {
       // 注册成功
       notificationTitle.value = '注册成功'
-      notificationMessage.value = '恭喜您注册成功！点击确定返回登录页面。'
+      notificationMessage.value = '注册成功！'
       notificationType.value = 'success'
       showNotification.value = true
     } else {
@@ -184,22 +183,13 @@ const handleRegister = async () => {
   }
 }
 
-// 处理通知确认按钮点击
+// 处理通知确认按钮点击和关闭
 const handleNotificationConfirm = () => {
   showNotification.value = false
   
   // 注册成功后跳转到登录页面
   if (notificationType.value === 'success') {
     router.push('/')
-  }
-}
-
-// 处理通知关闭（点击遮罩层）
-const handleNotificationConfirm = () => {
-  showNotification.value = false
-  if (notificationType.value === 'success') {
-    // 注册成功后跳转到登录页面
-    router.push('/login')
   }
 }
 </script>

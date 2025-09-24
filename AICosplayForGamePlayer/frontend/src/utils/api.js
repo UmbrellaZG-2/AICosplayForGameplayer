@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: '',
+  baseURL: 'http://localhost:8080',
   timeout: 10000,
   withCredentials: true,
   headers: {
@@ -34,7 +34,7 @@ api.interceptors.response.use(
     // 处理错误响应
     if (error.response) {
       // 服务器返回错误状态码
-      console.error('API Error:', error.response.data)
+      console.error('API Error:', error.response.status, error.response.statusText, error.response.data)
       if (error.response.status === 401) {
         // 未授权，跳转到登录页
         localStorage.removeItem('isLoggedIn')
@@ -47,6 +47,8 @@ api.interceptors.response.use(
       // 请求配置出错
       console.error('Request Error:', error.message)
     }
+    // 打印完整错误对象，方便调试
+    console.error('Full Error:', error)
     return Promise.reject(error)
   }
 )

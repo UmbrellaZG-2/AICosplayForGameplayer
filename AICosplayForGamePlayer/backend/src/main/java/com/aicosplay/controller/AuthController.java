@@ -4,6 +4,7 @@ import com.aicosplay.entity.User;
 import com.aicosplay.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpSession;
@@ -68,6 +69,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
+    @Transactional
     public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
         try {
             // 验证验证码
@@ -80,6 +82,16 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码错误"));
             }
             
+            // 先检查用户名和邮箱是否已存在，而不是直接调用registerUser
+            if (userService.existsByUsername(registerRequest.getUsername())) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名重复"));
+            }
+            
+            if (userService.existsByEmail(registerRequest.getEmail())) {
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "邮箱重复"));
+            }
+            
+            // 所有验证通过后，再创建用户
             User user = userService.registerUser(
                     registerRequest.getUsername(),
                     registerRequest.getEmail(),
@@ -91,7 +103,10 @@ public class AuthController {
             
             return ResponseEntity.ok(new ApiResponse(true, "注册成功"));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
+            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage() != null ? e.getMessage() : "注册失败"));
+        } catch (Exception e) {
+            // 捕获所有其他异常，确保返回有意义的错误消息
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "注册失败，请稍后重试"));
         }
     }
 
