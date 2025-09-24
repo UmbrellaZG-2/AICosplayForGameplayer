@@ -32,6 +32,7 @@
             @input="handleEmailInput"
             required
             placeholder="请输入邮箱"
+            :class="{ 'error-input': emailFormatError }"
           />
           <div v-if="emailChecking" class="email-status checking">
             正在检查邮箱可用性...
@@ -39,8 +40,14 @@
           <div v-else-if="emailStatus === 'available'" class="email-status available">
             邮箱可用
           </div>
+          <div v-else-if="emailStatus === 'network-error'" class="email-status network-error">
+            网络连接失败，请稍后重试
+          </div>
           <div v-else-if="emailStatus === 'taken'" class="email-status taken">
             邮箱已被使用
+          </div>
+          <div v-if="emailFormatError" class="email-format-error">
+            请输入正确邮箱
           </div>
         </div>
         <div class="form-group">
@@ -125,8 +132,35 @@ const isFormValid = computed(() => {
          form.value.password.trim() &&
          form.value.verificationCode.trim() &&
          usernameStatus.value === 'available' &&
-         emailStatus.value === 'available'
+         emailStatus.value === 'available' &&
+         !emailFormatError.value
 })
+
+// 验证邮箱格式
+const validateEmailFormat = (email) => {
+  // 常见的有效邮箱域名列表
+  const validDomains = [
+    '@qq.com',
+    '@163.com',
+    '@126.com',
+    '@sina.com',
+    '@sohu.com',
+    '@gmail.com',
+    '@outlook.com',
+    '@hotmail.com',
+    '@139.com',
+    '@189.cn',
+    '@aliyun.com',
+    '@icloud.com',
+    '@qq.com.cn',
+    '@163.net'
+  ]
+  
+  // 检查邮箱是否包含有效的域名后缀
+  return validDomains.some(domain => 
+    email.toLowerCase().endsWith(domain.toLowerCase())
+  )
+}
 
 // 用户名检查状态
 const usernameStatus = ref('') // available, taken
@@ -136,6 +170,7 @@ let usernameCheckTimer = null
 // 邮箱检查状态
 const emailStatus = ref('') // available, taken
 const emailChecking = ref(false)
+const emailFormatError = ref(false)
 let emailCheckTimer = null
 
 // 处理用户名输入，添加防抖
@@ -163,14 +198,22 @@ const handleEmailInput = () => {
     clearTimeout(emailCheckTimer)
   }
   
-  // 如果邮箱不为空，设置新的定时器
+  // 验证邮箱格式
   if (form.value.email.trim()) {
-    emailStatus.value = ''
-    emailCheckTimer = setTimeout(() => {
-      checkEmail(form.value.email)
-    }, 500) // 500毫秒防抖
+    emailFormatError.value = !validateEmailFormat(form.value.email)
+    
+    // 如果格式正确，继续检查邮箱可用性
+    if (!emailFormatError.value) {
+      emailStatus.value = ''
+      emailCheckTimer = setTimeout(() => {
+        checkEmail(form.value.email)
+      }, 500) // 500毫秒防抖
+    } else {
+      emailStatus.value = ''
+    }
   } else {
     emailStatus.value = ''
+    emailFormatError.value = false
   }
 }
 
@@ -212,7 +255,12 @@ const checkEmail = async (email) => {
     }
   } catch (err) {
     console.error('检查邮箱失败:', err)
-    emailStatus.value = 'taken'
+    // 检查是否为网络错误
+    if (err.code === 'ECONNREFUSED' || err.message?.includes('ERR_CONNECTION_REFUSED')) {
+      emailStatus.value = 'network-error'
+    } else {
+      emailStatus.value = 'taken'
+    }
   } finally {
     emailChecking.value = false
   }
@@ -228,7 +276,7 @@ const handleGetVerificationCode = async () => {
       startCountdown()
       
       notificationTitle.value = '验证码已发送'
-      notificationMessage.value = '验证码已发送到控制台，请查看控制台获取验证码。'
+      notificationMessage.value = '验证码已发送'
       notificationType.value = 'verificationSuccess'
       showNotification.value = true
     } else {
@@ -399,8 +447,27 @@ const handleNotificationConfirm = () => {
   color: #4CAF50;
 }
 
+.email-status.network-error {
+  color: #ff9800; /* 橙色表示网络错误 */
+}
+
 .email-status.taken {
   color: #f44336;
+}
+
+.email-format-error {
+  font-size: 12px;
+  margin-top: 4px;
+  color: #f44336;
+}
+
+.error-input {
+  border-color: #f44336;
+}
+
+.error-input:focus {
+  border-color: #d32f2f;
+  box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.2);
 }
 
 .register-button {
