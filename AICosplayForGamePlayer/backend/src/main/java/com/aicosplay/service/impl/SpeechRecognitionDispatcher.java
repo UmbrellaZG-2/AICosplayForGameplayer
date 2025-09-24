@@ -1,6 +1,7 @@
 package com.aicosplay.service.impl;
 
 import com.aicosplay.service.SpeechRecognitionService;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -41,9 +42,32 @@ public class SpeechRecognitionDispatcher {
             VoskOfflineSpeechService voskOfflineSpeechService) {
         this.onlineService = speechServiceImpl;
         this.offlineService = voskOfflineSpeechService;
-        
-        // 初始化当前服务
-        initializeCurrentService();
+    }
+    
+    /**
+     * 初始化方法，在所有依赖注入完成后执行
+     */
+    @PostConstruct
+    public void init() {
+        try {
+            // 短暂延迟，确保所有依赖服务都有足够时间完成初始化
+            Thread.sleep(100);
+            logger.info("开始初始化语音识别调度器");
+            initializeCurrentService();
+        } catch (Exception e) {
+            logger.severe("初始化语音识别调度器时发生异常: " + e.getMessage());
+            // 设置默认使用在线服务作为后备方案
+            try {
+                if (onlineService != null && onlineService.isAvailable()) {
+                    currentService.set(onlineService);
+                    logger.warning("调度器初始化异常，已回退到在线服务");
+                } else {
+                    logger.warning("调度器初始化异常，且在线服务不可用");
+                }
+            } catch (Exception ex) {
+                logger.severe("回退到在线服务也失败: " + ex.getMessage());
+            }
+        }
     }
 
     /**

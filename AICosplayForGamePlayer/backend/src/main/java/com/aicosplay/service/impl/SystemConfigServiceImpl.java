@@ -93,7 +93,8 @@ public class SystemConfigServiceImpl implements SystemConfigService {
      * @return 环境变量名
      */
     private String convertToEnvVarName(String configKey) {
-        return configKey.replace('.', '_').toUpperCase();
+        // 替换点和连字符为下划线，并转换为大写
+        return configKey.replace('.', '_').replace('-', '_').toUpperCase();
     }
 
     /**

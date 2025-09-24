@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,7 +16,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -34,17 +32,11 @@ public class SpeechServiceImpl implements SpeechRecognitionService {
     
     private static final Logger logger = Logger.getLogger(SpeechServiceImpl.class.getName());
     
-    @Value("${xfyun.appid}")
-    private String appId;
-    
-    @Value("${xfyun.api-key}")
-    private String apiKey;
-    
-    @Value("${xfyun.api-secret}")
-    private String apiSecret;
-    
-    @Value("${xfyun.host-url}")
-    private String hostUrl;
+    // 配置属性，在initialize方法中从环境变量手动加载
+    private String appId = "default_appid";
+    private String apiKey = "default_api_key";
+    private String apiSecret = "default_api_secret";
+    private String hostUrl = "wss://iat-api.xfyun.cn/v2/iat";
     
     // 定义音频状态常量
     private static final int STATUS_FIRST_FRAME = 0; // 第一帧
@@ -98,7 +90,26 @@ public class SpeechServiceImpl implements SpeechRecognitionService {
     @PostConstruct
     public void initialize() {
         logger.info("初始化在线语音识别服务");
-        // 在线服务不需要特殊的初始化过程，配置检查在isAvailable()中进行
+        
+        try {
+            // 从环境变量手动加载配置（注意：配置可能尚未从数据库加载，这里可能获取到默认值）
+            appId = System.getProperty("XFYUN_APPID", appId);
+            apiKey = System.getProperty("XFYUN_API_KEY", apiKey);
+            apiSecret = System.getProperty("XFYUN_API_SECRET", apiSecret);
+            hostUrl = System.getProperty("XFYUN_HOST_URL", hostUrl);
+            
+            logger.info("从环境变量加载配置: AppID=" + appId);
+            
+            // 验证配置是否完整
+            if (!isAvailable()) {
+                logger.warning("在线语音识别服务配置不完整，某些功能可能受限。服务将继续初始化，但在使用时会通过isAvailable()检查");
+            } else {
+                logger.info("在线语音识别服务初始化完成，配置有效");
+            }
+        } catch (Exception e) {
+            logger.severe("初始化在线语音识别服务时发生异常: " + e.getMessage());
+            // 即使初始化异常，也不抛出异常，避免影响Spring容器初始化
+        }
     }
 
     @Override
