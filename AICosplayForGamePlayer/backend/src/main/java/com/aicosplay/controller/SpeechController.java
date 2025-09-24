@@ -1,6 +1,6 @@
 package com.aicosplay.controller;
 
-import com.aicosplay.service.SpeechService;
+import com.aicosplay.service.impl.SpeechRecognitionDispatcher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,7 @@ import jakarta.servlet.http.HttpSession;
 public class SpeechController {
     
     @Autowired
-    private SpeechService speechService;
+    private SpeechRecognitionDispatcher speechRecognitionDispatcher;
     
     /**
      * 语音识别API
@@ -44,8 +44,8 @@ public class SpeechController {
                 return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, "音频文件大小不能超过10MB"));
             }
             
-            // 调用语音识别服务进行识别
-            String recognizedText = speechService.recognizeSpeech(audioFile);
+            // 使用语音识别调度器进行识别（会自动选择和切换合适的服务）
+            String recognizedText = speechRecognitionDispatcher.recognizeSpeech(audioFile);
             
             // 返回识别结果
             return ResponseEntity.ok(new SpeechResponse(true, "语音识别成功", recognizedText));
@@ -60,10 +60,25 @@ public class SpeechController {
     @GetMapping("/health")
     public ResponseEntity<?> healthCheck() {
         try {
-            String status = speechService.healthCheck();
+            String status = speechRecognitionDispatcher.getServicesStatus();
             return ResponseEntity.ok(new AuthController.ApiResponse(true, status));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(new AuthController.ApiResponse(false, "语音识别服务异常: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * 切换语音识别服务类型
+     */
+    @PostMapping("/switch")
+    public ResponseEntity<?> switchServiceType(@RequestParam String type) {
+        try {
+            // 验证用户是否登录
+            // 在实际应用中，可能需要进行权限验证
+            speechRecognitionDispatcher.switchServiceType(type);
+            return ResponseEntity.ok(new AuthController.ApiResponse(true, "服务类型切换成功"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, "服务类型切换失败: " + e.getMessage()));
         }
     }
     

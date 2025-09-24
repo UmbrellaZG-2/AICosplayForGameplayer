@@ -1,30 +1,38 @@
 package com.aicosplay.service.impl;
 
-import com.aicosplay.service.SpeechService;
+import com.aicosplay.service.SpeechRecognitionService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 /**
- * 语音识别服务实现类
- * 使用科大讯飞的HTTP API进行语音转文字
+ * 语音识别服务实现类（在线）
+ * 负责处理语音识别的核心逻辑
  */
 @Service
-public class SpeechServiceImpl implements SpeechService {
+public class SpeechServiceImpl implements SpeechRecognitionService {
+    
+    private static final Logger logger = Logger.getLogger(SpeechServiceImpl.class.getName());
     
     @Value("${xfyun.appid}")
     private String appId;
@@ -38,165 +46,387 @@ public class SpeechServiceImpl implements SpeechService {
     @Value("${xfyun.host-url}")
     private String hostUrl;
     
+    // 定义音频状态常量
+    private static final int STATUS_FIRST_FRAME = 0; // 第一帧
+    private static final int STATUS_CONTINUE_FRAME = 1; // 中间帧
+    private static final int STATUS_LAST_FRAME = 2; // 最后一帧
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    
     @Override
     public String recognizeSpeech(MultipartFile audioFile) {
         try {
+            logger.info("开始处理语音识别请求");
+            
             // 读取音频文件内容
             byte[] audioBytes = audioFile.getBytes();
             
             // 发送音频数据到科大讯飞API并获取识别结果
             String recognizedText = sendAudioToXfyun(audioBytes);
             
+            logger.info("语音识别请求处理完成");
             return recognizedText;
         } catch (IOException e) {
+            logger.severe("处理音频文件失败: " + e.getMessage());
             throw new RuntimeException("处理音频文件失败: " + e.getMessage(), e);
         } catch (Exception e) {
+            logger.severe("语音识别失败: " + e.getMessage());
             throw new RuntimeException("语音识别失败: " + e.getMessage(), e);
         }
     }
     
     @Override
     public String healthCheck() {
-        return "语音识别服务运行正常";
+        return "在线语音识别服务运行正常，AppID: " + appId;
+    }
+
+    @Override
+    public String getServiceType() {
+        return "online";
+    }
+
+    @Override
+    public boolean isAvailable() {
+        // 简单检查必要配置是否存在
+        return appId != null && !appId.isEmpty() && 
+               apiKey != null && !apiKey.isEmpty() && 
+               apiSecret != null && !apiSecret.isEmpty() && 
+               hostUrl != null && !hostUrl.isEmpty();
+    }
+
+    @Override
+    @PostConstruct
+    public void initialize() {
+        logger.info("初始化在线语音识别服务");
+        // 在线服务不需要特殊的初始化过程，配置检查在isAvailable()中进行
+    }
+
+    @Override
+    @PreDestroy
+    public void shutdown() {
+        logger.info("关闭在线语音识别服务");
+        // 在线服务不需要特殊的关闭过程
     }
     
     /**
      * 发送音频数据到科大讯飞API并获取识别结果
      */
     private String sendAudioToXfyun(byte[] audioBytes) throws Exception {
-        // 生成鉴权头
-        Map<String, String> authHeaders = generateAuthHeaders();
+        // 生成鉴权URL
+        String authUrl = generateAuthUrl();
         
-        // 设置请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        headers.set("Authorization", authHeaders.get("Authorization"));
-        headers.set("Date", authHeaders.get("Date"));
+        // 将HTTP URL转换为WebSocket URL
+        String wsUrl = authUrl.replace("http://", "ws://").replace("https://", "wss://");
+        logger.info("WebSocket URL: " + wsUrl);
         
-        // 创建请求体
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        // 创建结果容器和同步工具
+        StringBuilder resultBuilder = new StringBuilder();
+        CountDownLatch latch = new CountDownLatch(1);
+        // 使用数组来包装异常，这样可以在内部类中修改
+        Exception[] errorHolder = new Exception[1];
         
-        // 构建JSON参数
-        Map<String, Object> jsonParams = buildJsonParams();
-        String businessJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(jsonParams.get("business"));
-        String commonJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(jsonParams.get("common"));
-        String audioJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(jsonParams.get("audio"));
-        
-        // 添加音频文件和参数
-        body.add("audio", new org.springframework.core.io.ByteArrayResource(audioBytes) {
+        // 创建WebSocket客户端
+        WebSocketClient client = new WebSocketClient(new URI(wsUrl)) {
             @Override
-            public String getFilename() {
-                return "audio.webm";
+            public void onOpen(ServerHandshake serverHandshake) {
+                logger.info("WebSocket连接已打开");
+                try {
+                    // 发送音频数据
+                    sendAudioData(this, audioBytes);
+                } catch (Exception e) {
+                    logger.severe("发送音频数据失败: " + e.getMessage());
+                    errorHolder[0] = e;
+                    latch.countDown();
+                }
             }
-        });
-        body.add("business", businessJson);
-        body.add("common", commonJson);
-        body.add("audio", audioJson);
+            
+            @Override
+            public void onMessage(String message) {
+                try {
+                    // 处理响应消息
+                    boolean isFinal = processResponseMessage(message, resultBuilder);
+                    if (isFinal) {
+                        latch.countDown();
+                    }
+                } catch (Exception e) {
+                    logger.severe("处理响应消息失败: " + e.getMessage());
+                    errorHolder[0] = e;
+                    latch.countDown();
+                }
+            }
+            
+            @Override
+            public void onClose(int code, String reason, boolean remote) {
+                logger.info("WebSocket连接已关闭: " + reason + " (code: " + code + ")");
+                try {
+                    if (!latch.await(500, TimeUnit.MILLISECONDS)) {
+                        latch.countDown();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    latch.countDown();
+                }
+            }
+            
+            @Override
+            public void onError(Exception ex) {
+                logger.severe("WebSocket连接错误: " + ex.getMessage());
+                errorHolder[0] = ex;
+                try {
+                    if (!latch.await(500, TimeUnit.MILLISECONDS)) {
+                        latch.countDown();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    latch.countDown();
+                }
+            }
+        };
         
-        // 创建HTTP请求
-        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+        // 连接WebSocket
+        client.connect();
         
-        // 发送请求到科大讯飞API
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> response = restTemplate.exchange(
-                "https://api.xfyun.cn/v2/iat",
-                HttpMethod.POST,
-                requestEntity,
-                String.class
-        );
+        // 等待识别完成或超时
+        boolean awaitResult = latch.await(60, TimeUnit.SECONDS);
         
-        // 解析响应
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            return parseXfyunResponse(response.getBody());
-        } else {
-            throw new RuntimeException("语音识别请求失败: " + response.getStatusCode());
+        // 关闭连接
+        client.close();
+        
+        // 检查是否有错误
+        if (errorHolder[0] != null) {
+            throw errorHolder[0];
         }
+        
+        // 检查是否超时
+        if (!awaitResult) {
+            throw new RuntimeException("语音识别超时");
+        }
+        
+        // 检查识别结果是否为空
+        String result = resultBuilder.toString().trim();
+        if (result.isEmpty()) {
+            throw new RuntimeException("未识别到有效文本");
+        }
+        
+        return result;
     }
     
     /**
-     * 生成鉴权头
+     * 生成鉴权URL
      */
-    private Map<String, String> generateAuthHeaders() throws Exception {
-        SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z");
-        format.setTimeZone(java.util.TimeZone.getTimeZone("GMT"));
+    private String generateAuthUrl() throws Exception {
+        // 获取当前时间戳
+        SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+        format.setTimeZone(TimeZone.getTimeZone("GMT"));
         String date = format.format(new Date());
         
         // 构建签名字符串
-        String signatureOrigin = "host: api.xfyun.cn\ndate: " + date + "\nPOST /v2/iat HTTP/1.1";
+        String signature_origin = "host: " + getHost(hostUrl) + "\n";
+        signature_origin += "date: " + date + "\n";
+        signature_origin += "GET " + getPath(hostUrl) + " HTTP/1.1";
         
-        // 使用SHA-256算法生成签名
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        byte[] hash = md.digest(signatureOrigin.getBytes(StandardCharsets.UTF_8));
+        // 计算HMAC-SHA256签名
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec spec = new SecretKeySpec(apiSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        mac.init(spec);
+        byte[] digest = mac.doFinal(signature_origin.getBytes(StandardCharsets.UTF_8));
+        String signature = Base64.getEncoder().encodeToString(digest);
         
-        // 使用Base64编码
-        String signature = Base64.getEncoder().encodeToString(hash);
+        // 构建Authorization头
+        String authorization_origin = "api_key=" + apiKey + ", algorithm=hmac-sha256, headers=host date request-line, signature=" + signature;
+        String authorization = Base64.getEncoder().encodeToString(authorization_origin.getBytes(StandardCharsets.UTF_8));
         
-        // 构建Authorization
-        String authorizationOrigin = "api_key=" + apiKey + ", algorithm=" + "hmac-sha256" + ", headers=" + "host date request-line" + ", signature=" + signature;
-        String authorization = Base64.getEncoder().encodeToString(authorizationOrigin.getBytes(StandardCharsets.UTF_8));
+        // 构建鉴权URL
+        StringBuilder urlBuilder = new StringBuilder();
+        urlBuilder.append("https://").append(getHost(hostUrl)).append(getPath(hostUrl));
+        urlBuilder.append("?authorization=").append(URLEncoder.encode(authorization, StandardCharsets.UTF_8.toString()));
+        urlBuilder.append("&date=").append(URLEncoder.encode(date, StandardCharsets.UTF_8.toString()));
+        urlBuilder.append("&host=").append(getHost(hostUrl));
         
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Authorization", authorization);
-        headers.put("Date", date);
-        
-        return headers;
+        return urlBuilder.toString();
     }
     
     /**
-     * 构建JSON参数
+     * 从URL中提取主机名
      */
-    private Map<String, Object> buildJsonParams() {
-        Map<String, Object> params = new HashMap<>();
-        Map<String, Object> common = new HashMap<>();
-        Map<String, Object> business = new HashMap<>();
-        Map<String, Object> audio = new HashMap<>();
-        
-        // 填充公共参数
-        common.put("app_id", appId);
-        
-        // 填充业务参数
-        business.put("language", "zh_cn");
-        business.put("domain", "iat");
-        business.put("accent", "mandarin");
-        
-        // 填充音频参数
-        audio.put("format", "audio/webm");
-        audio.put("encoding", "opus");
-        audio.put("sample_rate", 16000);
-        audio.put("channels", 1);
-        
-        // 组合参数
-        params.put("common", common);
-        params.put("business", business);
-        params.put("audio", audio);
-        
-        return params;
+    private String getHost(String url) {
+        URI uri = null;
+        try {
+            uri = new URI(url);
+            return uri.getHost();
+        } catch (URISyntaxException e) {
+            throw new RuntimeException("解析URL失败: " + url, e);
+        }
     }
     
     /**
-     * 解析科大讯飞API的响应
+     * 从URL中提取路径
      */
-    private String parseXfyunResponse(String responseBody) throws Exception {
-        // 解析JSON响应
-        com.fasterxml.jackson.databind.JsonNode rootNode = new com.fasterxml.jackson.databind.ObjectMapper().readTree(responseBody);
+    private String getPath(String url) {
+        URI uri = null;
+        try {
+            uri = new URI(url);
+            return uri.getPath();
+        } catch (URISyntaxException e) {
+            throw new RuntimeException("解析URL失败: " + url, e);
+        }
+    }
+    
+    /**
+     * 发送音频数据
+     */
+    private void sendAudioData(WebSocketClient client, byte[] audioBytes) throws IOException {
+        // 音频分片大小（10ms音频，16kHz采样率，16bit位深，单声道）
+        int frameSize = 3200;
         
-        // 检查是否有错误
-        if (rootNode.has("code") && !rootNode.get("code").asText().equals("0")) {
-            String errorMsg = rootNode.get("message").asText();
-            throw new RuntimeException("语音识别错误: " + errorMsg);
+        // 发送第一帧
+        int seq = 0;
+        sendFrame(client, audioBytes, 0, Math.min(frameSize, audioBytes.length), seq++, STATUS_FIRST_FRAME);
+        
+        // 发送中间帧
+        int offset = frameSize;
+        while (offset < audioBytes.length - frameSize) {
+            sendFrame(client, audioBytes, offset, frameSize, seq++, STATUS_CONTINUE_FRAME);
+            offset += frameSize;
         }
         
-        // 提取识别结果
-        if (rootNode.has("data")) {
-            com.fasterxml.jackson.databind.JsonNode dataNode = rootNode.get("data");
-            if (dataNode.has("result")) {
-                com.fasterxml.jackson.databind.JsonNode resultNode = dataNode.get("result");
+        // 发送最后一帧
+        sendFrame(client, audioBytes, offset, audioBytes.length - offset, seq, STATUS_LAST_FRAME);
+    }
+    
+    /**
+     * 发送单个音频帧
+     */
+    private void sendFrame(WebSocketClient client, byte[] audioBytes, int offset, int length, int seq, int status) throws IOException {
+        // 截取音频数据
+        byte[] frameData = Arrays.copyOfRange(audioBytes, offset, offset + length);
+        
+        // 构建发送数据
+        String jsonData = buildFrameData(frameData, seq, status);
+        
+        // 发送数据
+        client.send(jsonData);
+        
+        // 短暂休眠，控制发送速度
+        try {
+            Thread.sleep(10);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+    
+    /**
+     * 构建音频帧数据
+     */
+    private String buildFrameData(byte[] audioData, int seq, int status) throws IOException {
+        Map<String, Object> data = new HashMap<>();
+        
+        // 构建header
+        Map<String, Object> header = new HashMap<>();
+        header.put("app_id", appId);
+        header.put("uid", "user" + System.currentTimeMillis());
+        header.put("status", status);
+        header.put("seq", seq);
+        header.put("format", "raw");
+        header.put("codec", "raw");
+        header.put("sample_rate", 16000);
+        header.put("channel", 1);
+        header.put("language", "zh_cn");
+        header.put("accent", "mandarin");
+        data.put("header", header);
+        
+        // 构建parameter
+        Map<String, Object> parameter = new HashMap<>();
+        Map<String, Object> iat = new HashMap<>();
+        Map<String, Object> result = new HashMap<>();
+        result.put("encoding", "utf8");
+        result.put("compress", "raw");
+        result.put("format", "json");
+        iat.put("result", result);
+        parameter.put("iat", iat);
+        
+        // 构建payload
+        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> audio = new HashMap<>();
+        audio.put("encoding", "raw");
+        audio.put("sample_rate", 16000);
+        audio.put("channels", 1);
+        audio.put("bit_depth", 16);
+        audio.put("seq", seq);
+        audio.put("status", status);
+        
+        // 只有非最后一帧才包含音频数据
+        if (status != STATUS_LAST_FRAME) {
+            audio.put("audio", Base64.getEncoder().encodeToString(audioData));
+        } else {
+            audio.put("audio", "");
+        }
+        
+        payload.put("audio", audio);
+        
+        // 组合数据
+        data.put("header", header);
+        data.put("parameter", parameter);
+        data.put("payload", payload);
+        
+        // 转换为JSON字符串
+        return objectMapper.writeValueAsString(data);
+    }
+    
+    /**
+     * 处理响应消息
+     */
+    private boolean processResponseMessage(String message, StringBuilder resultBuilder) throws Exception {
+        // 解析JSON响应
+        JsonNode rootNode = objectMapper.readTree(message);
+        
+        // 检查是否有错误
+        if (rootNode.has("header")) {
+            JsonNode headerNode = rootNode.get("header");
+            if (headerNode.has("code") && headerNode.get("code").asInt() != 0) {
+                String errorMsg = headerNode.get("message").asText();
+                logger.severe("语音识别错误: " + errorMsg + " (code=" + headerNode.get("code").asInt() + ")");
+                throw new RuntimeException("语音识别错误: " + errorMsg + " (code=" + headerNode.get("code").asInt() + ")");
+            }
+        }
+        
+        // 处理识别结果
+        if (rootNode.has("payload")) {
+            JsonNode payloadNode = rootNode.get("payload");
+            if (payloadNode.has("result")) {
+                JsonNode resultNode = payloadNode.get("result");
                 if (resultNode.has("text")) {
-                    return resultNode.get("text").asText();
+                    // 解码识别结果
+                    String textBase64 = resultNode.get("text").asText();
+                    byte[] decodedBytes = Base64.getDecoder().decode(textBase64);
+                    String decodeRes = new String(decodedBytes, StandardCharsets.UTF_8);
+                    
+                    // 解析结果JSON
+                    JsonNode textNode = objectMapper.readTree(decodeRes);
+                    if (textNode.has("ws")) {
+                        Iterator<JsonNode> wsIterator = textNode.get("ws").elements();
+                        while (wsIterator.hasNext()) {
+                            JsonNode wsNode = wsIterator.next();
+                            if (wsNode.has("cw")) {
+                                Iterator<JsonNode> cwIterator = wsNode.get("cw").elements();
+                                while (cwIterator.hasNext()) {
+                                    JsonNode cwNode = cwIterator.next();
+                                    if (cwNode.has("w")) {
+                                        resultBuilder.append(cwNode.get("w").asText());
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         
-        throw new RuntimeException("无法从响应中提取识别结果");
+        // 检查是否是最后一条消息
+        if (rootNode.has("header") && rootNode.get("header").has("status") && rootNode.get("header").get("status").asInt() == 2) {
+            return true; // 是最终结果
+        }
+        
+        return false; // 不是最终结果
     }
 }

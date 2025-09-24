@@ -187,4 +187,4 @@ backend/
    - "人气即力量"是其核心机制
    - 直播数据直接影响魔法强弱
 
-© 2025 AICosplayForGamePlayer Team
+© 2025 AICosplayForGamePlayer Team ZG  UmbrellaZG 

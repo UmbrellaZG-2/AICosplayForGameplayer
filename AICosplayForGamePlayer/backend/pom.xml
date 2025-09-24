@@ -138,6 +138,41 @@
             <version>2.16.1</version>
         </dependency>
         
+        <!-- Java-WebSocket - 用于WebSocket通信 -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.4</version>
+        </dependency>
+        
+        <!-- Vosk Offline Speech Recognition -->
+        <dependency>
+            <groupId>com.alphacephei</groupId>
+            <artifactId>vosk</artifactId>
+            <version>0.3.32</version>
+        </dependency>
+        
+        <!-- FFmpeg - 用于音频处理 -->
+        <dependency>
+            <groupId>ws.schild</groupId>
+            <artifactId>jave-all-deps</artifactId>
+            <version>3.3.1</version>
+        </dependency>
+        
+        <!-- javax.annotation-api - 提供@PostConstruct和@PreDestroy注解 -->
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>2.1.1</version>
+        </dependency>
+        
+        <!-- JNA - 用于Vosk离线语音识别 -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+        
     </dependencies>
 
     <build>
