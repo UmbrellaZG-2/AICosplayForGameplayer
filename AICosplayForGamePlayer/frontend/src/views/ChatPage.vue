@@ -266,6 +266,13 @@
         </p>
       </div>
       <div class="modal-footer">
+        <button 
+          class="confirm-button" 
+          @click="toggleRecording"
+          :disabled="showRecordingModal && !isRecording"
+        >
+          {{ isRecording ? '停止' : '开始' }}
+        </button>
         <button class="confirm-button" @click="stopRecording" :disabled="!isRecording">
           确定
         </button>
@@ -308,6 +315,15 @@ let mediaRecorder = null
 let audioChunks = []
 let recordingInterval = null
 let stream = null
+
+// 切换录音状态（开始/停止）
+const toggleRecording = async () => {
+  if (isRecording.value) {
+    await stopRecording()
+  } else {
+    await startRecording()
+  }
+}
 
 // 初始化时加载对话列表和角色列表
 onMounted(() => {
@@ -359,7 +375,7 @@ const initRecording = () => {
 const openRecordingModal = () => {
   showRecordingModal.value = true
   initRecording()
-  startRecording()
+  // 不自动开始录音，等待用户点击开始按钮
 }
 
 // 开始录音
