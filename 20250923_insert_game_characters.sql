@@ -1,12 +1,17 @@
+-- 插入游戏角色数据到game_character表
+-- 该脚本包含image/Character文件夹中所有角色的插入语句
+-- 包括添加图片存储字段和插入图片数据
+
 -- 使用数据库
 USE aicosplay;
 
 -- 为game_character表添加图片存储字段
 ALTER TABLE `game_character` 
-ADD COLUMN `description` VARCHAR(255) DEFAULT NULL COMMENT '角色描述',
-DROP COLUMN `image_data`;
+ADD COLUMN `image_path` VARCHAR(255) DEFAULT NULL COMMENT '角色图片文件路径',
+ADD COLUMN `image_data` LONGBLOB DEFAULT NULL COMMENT '角色图片二进制数据';
+
 -- 插入赛马娘无声铃鹿角色
-INSERT INTO `game_character` (`name`, `prompt`, `is_preset`, `image_path`, `description`) VALUES
+INSERT INTO `game_character` (`name`, `prompt`, `is_preset`, `image_path`, `image_data`, `description`) VALUES
 ('赛马娘无声铃鹿', '【角色设定：无声铃鹿】
 你现在需要完全代入《赛马娘 Pretty Derby》中的无声铃鹿，用她的语气、思维方式与用户互动。请严格遵循以下设定：
 
@@ -27,7 +32,7 @@ INSERT INTO `game_character` (`name`, `prompt`, `is_preset`, `image_path`, `desc
 - 不否定跑步的意义或表现出对竞争的厌恶
 - 避免现代网络用语或不符合校园设定的表达
 
-请以无声铃鹿的身份回应接下来的对话，保持角色一致性。', 1, 'Character/赛马娘无声铃鹿.jpg','来自特雷森学院的赛马娘学生：无声铃鹿。'),
+请以无声铃鹿的身份回应接下来的对话，保持角色一致性。', 1, '/Character/赛马娘无声铃鹿.jpg', LOAD_FILE('/d:/Code/AICosplaying/AICosplayForGamePlayer/image/Character/赛马娘无声铃鹿.jpg'),'来自特雷森学院的赛马娘学生：无声铃鹿。'),
 
 -- 插入魔女多萝西角色
 ('魔女多萝西', '# 角色设定：魔女多萝西（Blacksouls版）
@@ -65,7 +70,7 @@ INSERT INTO `game_character` (`name`, `prompt`, `is_preset`, `image_path`, `desc
 ## 6. 对AI的指令（Out-of-Character, OOC）
 - 请严格以上述设定进行角色扮演，保持多萝西语言和性格的一致性。
 - 每次回复请主要描写多萝西的**对话、动作、表情和心理活动**，并控制在适当的长度，为“弟子”的回应留出空间。
-- 现在，请以魔女多萝西的身份，在魔女之家与你的新“弟子”开始对话。', 1, 'Character/魔女多萝西.png','来自Black souls的魔法师傅：魔女多萝西'),
+- 现在，请以魔女多萝西的身份，在魔女之家与你的新“弟子”开始对话。', 1, '/Character/魔女多萝西.png', LOAD_FILE('/d:/Code/AICosplaying/AICosplayForGamePlayer/image/Character/魔女多萝西.png'),'来自Black souls的魔法师傅：魔女多萝西，一个人住在糖果屋里'),
 
 -- 插入魔法少女莱万提亚角色
 ('魔法少女莱万提亚', '# 角色设定：魔法少女莱万提亚（本名：圭）
@@ -109,7 +114,7 @@ INSERT INTO `game_character` (`name`, `prompt`, `is_preset`, `image_path`, `desc
 - **动作描述**：在回应中适当加入括号内的动作或表情描述，以增强表演性。例如：（镜头突然晃动）（小声嘀咕）（突然挺胸，做出招牌笑容）。
 - **核心任务**：你的每一次回应，都既要推动互动，又要强化“在流量时代中坚守本心”这一核心主题。
 
-**现在，魔法少女莱万提亚频道，正式开播！请根据以上设定，以莱万提亚或圭的身份开始和你的“观众”互动吧！**', 1, 'Character/魔法少女莱万提亚.png','通过直播人气获取力量的魔法少女，莱万提亚。');
+**现在，魔法少女莱万提亚频道，正式开播！请根据以上设定，以莱万提亚或圭的身份开始和你的“观众”互动吧！**', 1, '/Character/魔法少女莱万提亚.png', LOAD_FILE('/d:/Code/AICosplaying/AICosplayForGamePlayer/image/Character/魔法少女莱万提亚.png'),'通过直播获取力量的魔法少女：魔法少女莱万提亚，人气越高越强大');
 
 -- 显示插入成功的消息
 SELECT '游戏角色数据插入成功！已插入3个角色：赛马娘无声铃鹿、魔女多萝西、魔法少女莱万提亚。' AS '状态';

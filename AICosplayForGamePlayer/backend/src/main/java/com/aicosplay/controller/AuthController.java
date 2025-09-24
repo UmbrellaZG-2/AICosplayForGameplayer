@@ -69,42 +69,59 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @Transactional
+    // 移除控制器层的事务注解，让服务层处理事务
     public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
         try {
+            System.out.println("接收到注册请求: " + registerRequest.getUsername() + ", " + registerRequest.getEmail());
+            
             // 验证验证码
             String storedCode = VerificationCodeCache.get(registerRequest.getEmail());
+            System.out.println("缓存中的验证码: " + storedCode);
             if (storedCode == null) {
+                System.out.println("验证码已过期或不存在");
                 return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码已过期或不存在"));
             }
             
             if (!storedCode.equals(registerRequest.getVerificationCode())) {
+                System.out.println("验证码错误: 输入的验证码: " + registerRequest.getVerificationCode());
                 return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码错误"));
             }
             
             // 先检查用户名和邮箱是否已存在，而不是直接调用registerUser
-            if (userService.existsByUsername(registerRequest.getUsername())) {
+            boolean usernameExists = userService.existsByUsername(registerRequest.getUsername());
+            System.out.println("用户名是否存在: " + usernameExists);
+            if (usernameExists) {
                 return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名重复"));
             }
             
-            if (userService.existsByEmail(registerRequest.getEmail())) {
+            boolean emailExists = userService.existsByEmail(registerRequest.getEmail());
+            System.out.println("邮箱是否存在: " + emailExists);
+            if (emailExists) {
                 return ResponseEntity.badRequest().body(new ApiResponse(false, "邮箱重复"));
             }
             
             // 所有验证通过后，再创建用户
+            System.out.println("所有验证通过，开始创建用户");
             User user = userService.registerUser(
                     registerRequest.getUsername(),
                     registerRequest.getEmail(),
                     registerRequest.getPassword()
             );
             
+            System.out.println("用户创建成功，用户ID: " + user.getId());
+            
             // 注册成功后移除验证码
             VerificationCodeCache.put(registerRequest.getEmail(), null);
             
             return ResponseEntity.ok(new ApiResponse(true, "注册成功"));
         } catch (RuntimeException e) {
+            System.out.println("运行时异常: " + e.getMessage());
+            e.printStackTrace();
+            // 让服务层的事务正常回滚，然后返回错误响应
             return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage() != null ? e.getMessage() : "注册失败"));
         } catch (Exception e) {
+            System.out.println("一般异常: " + e.getMessage());
+            e.printStackTrace();
             // 捕获所有其他异常，确保返回有意义的错误消息
             return ResponseEntity.badRequest().body(new ApiResponse(false, "注册失败，请稍后重试"));
         }

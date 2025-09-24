@@ -98,8 +98,21 @@ public class ConversationService {
         String context = buildConversationContext(recentMessages, conversation.getCharacterName());
         
         try {
-            // 调用AI服务生成回复
-            String aiResponse = aiService.generateResponseWithContext(content, context);
+            // 获取角色信息
+            GameCharacter character = gameCharacterRepository.findByName(conversation.getCharacterName())
+                    .orElseThrow(() -> new RuntimeException("Character not found"));
+            
+            // 判断是否是首次对话
+            boolean isFirstMessage = recentMessages.size() <= 1; // 只有当前用户消息
+            
+            // 调用AI服务生成回复，传入角色设定、用户信息和首次对话标志
+            String aiResponse = aiService.generateResponseWithContext(
+                    content, 
+                    context, 
+                    character.getPrompt(), 
+                    sender.getUsername(), 
+                    isFirstMessage
+            );
             
             // 保存AI回复
             Message aiMessage = new Message();

@@ -19,6 +19,9 @@ public class GameCharacter {
     @Column(columnDefinition = "TEXT")
     private String prompt;
     
+    @Column
+    private String description;
+    
     @Column(name = "image_path")
     private String imagePath;
     

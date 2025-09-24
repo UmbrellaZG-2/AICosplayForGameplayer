@@ -74,6 +74,7 @@ public class GameCharacterService {
 
         character.setName(characterDetails.getName());
         character.setPrompt(characterDetails.getPrompt());
+        character.setDescription(characterDetails.getDescription()); // 更新description字段
 
         return gameCharacterRepository.save(character);
     }

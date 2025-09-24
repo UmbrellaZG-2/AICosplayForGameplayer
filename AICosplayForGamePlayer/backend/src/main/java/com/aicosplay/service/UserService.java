@@ -17,7 +17,7 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class) // 明确指定遇到任何异常都回滚事务
     public User registerUser(String username, String email, String password) {
         // 检查用户名是否已存在
         if (userRepository.existsByUsername(username)) {
@@ -37,7 +37,15 @@ public class UserService {
         user.setNickname(username); // 默认使用用户名为昵称
         user.setStatus((byte) 1); // 默认状态为启用
 
-        return userRepository.save(user);
+        try {
+            // 保存用户并返回
+            return userRepository.save(user);
+        } catch (Exception e) {
+            // 捕获保存过程中的任何异常，确保事务回滚
+            System.out.println("用户保存失败: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("用户创建失败: " + e.getMessage());
+        }
     }
 
     public Optional<User> findByUsername(String username) {
