@@ -155,6 +155,13 @@
             <version>2.16.1</version>
         </dependency>
         
+        <!-- FreeTTS - 用于文字转语音 -->
+        <dependency>
+            <groupId>net.sf.sociaal</groupId>
+            <artifactId>freetts</artifactId>
+            <version>1.2.2</version>
+        </dependency>
+        
         <!-- Java-WebSocket - 用于WebSocket通信 -->
         <dependency>
             <groupId>org.java-websocket</groupId>

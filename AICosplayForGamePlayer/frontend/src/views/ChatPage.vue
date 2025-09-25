@@ -358,7 +358,10 @@ const fetchMessages = async () => {
     // 为AI语音消息添加showText属性，默认为false
     messages.value = data.map(msg => ({
       ...msg,
-      showText: false // 默认不显示AI消息的文字
+      showText: false, // 默认不显示AI消息的文字
+      // 如果是语音消息且有voiceFilePath，添加voiceUrl属性
+      voiceUrl: msg.isVoiceMessage && msg.voiceFilePath ? 
+        `/audio/${new URL(msg.voiceFilePath, window.location.origin).pathname.split('/').pop()}` : null
     }))
     
     // 滚动到底部
@@ -605,23 +608,21 @@ const stopRecording = async () => {
     };
     
     // 播放语音消息
-    const playVoiceMessage = async (message) => {
-      try {
-        // 如果消息有本地语音URL，直接播放
-        if (message.voiceUrl) {
-          const audio = new Audio(message.voiceUrl);
-          await audio.play();
-        } else {
-          // 否则从后端获取语音文件
-          const audioUrl = `/api/speech/${message.id}/play`;
-          const audio = new Audio(audioUrl);
-          await audio.play();
-        }
-      } catch (error) {
-        console.error('播放语音失败:', error);
-        ElMessage.error('播放语音失败');
-      }
-    };
+const playVoiceMessage = async (message) => {
+  try {
+    // 如果消息有voiceUrl，直接播放
+    if (message.voiceUrl) {
+      const audio = new Audio(message.voiceUrl);
+      await audio.play();
+    } else {
+      console.error('播放语音失败: 未找到语音URL');
+      ElMessage.error('播放语音失败: 未找到语音文件');
+    }
+  } catch (error) {
+    console.error('播放语音失败:', error);
+    ElMessage.error('播放语音失败');
+  }
+};
     
     // 切换AI消息文字显示状态
     const toggleAiMessageText = (message) => {
