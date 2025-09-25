@@ -7,6 +7,14 @@ import org.springframework.web.multipart.MultipartFile;
  * 规范语音识别服务需实现的核心方法，确保在线与离线服务的调用一致性
  */
 public interface SpeechRecognitionService {
+    
+    /**
+     * 识别类型枚举
+     */
+    enum RecognitionType {
+        API,    // 使用在线API识别
+        OFFLINE // 使用离线识别
+    }
 
     /**
      * 开始识别语音文件
@@ -26,6 +34,12 @@ public interface SpeechRecognitionService {
      * @return 服务类型名称（如"online"或"offline"）
      */
     String getServiceType();
+    
+    /**
+     * 获取识别类型
+     * @return 识别类型枚举值
+     */
+    RecognitionType getRecognitionType();
 
     /**
      * 检查服务是否可用

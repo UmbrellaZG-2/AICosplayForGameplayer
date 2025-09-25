@@ -181,4 +181,28 @@ public class ConversationService {
     public List<Conversation> getDeletedConversations(User user) {
         return conversationRepository.findByUserAndIsDeletedOrderByUpdatedAtDesc(user, 1);
     }
+    
+    /**
+     * 删除单条消息
+     * @param messageId 消息ID
+     * @param user 当前登录用户
+     */
+    @Transactional
+    public void deleteMessage(Long messageId, User user) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+        
+        // 检查消息所属的对话是否属于当前用户
+        Conversation conversation = message.getConversation();
+        if (!conversation.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized access to delete message");
+        }
+        
+        // 检查对话是否已删除
+        if (conversation.getIsDeleted() == (byte) 1) {
+            throw new RuntimeException("Cannot delete message from deleted conversation");
+        }
+        
+        messageRepository.delete(message);
+    }
 }

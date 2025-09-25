@@ -1,5 +1,7 @@
 package com.aicosplay.service.impl;
 
+import com.aicosplay.entity.SpeechRecognitionHistory;
+import com.aicosplay.service.SpeechRecognitionHistoryService;
 import com.aicosplay.service.SpeechRecognitionService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,6 +9,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -26,6 +30,8 @@ public class SpeechRecognitionDispatcher {
     // 离线语音识别服务
     private final SpeechRecognitionService offlineService;
 
+    private final SpeechRecognitionHistoryService speechRecognitionHistoryService;
+
     // 默认识别模式配置
     @Value("${speech.recognition.default-mode:offline-first}")
     private String defaultMode;
@@ -39,9 +45,11 @@ public class SpeechRecognitionDispatcher {
     @Autowired
     public SpeechRecognitionDispatcher(
             SpeechServiceImpl speechServiceImpl, 
-            VoskOfflineSpeechService voskOfflineSpeechService) {
+            VoskOfflineSpeechService voskOfflineSpeechService,
+            SpeechRecognitionHistoryService speechRecognitionHistoryService) {
         this.onlineService = speechServiceImpl;
         this.offlineService = voskOfflineSpeechService;
+        this.speechRecognitionHistoryService = speechRecognitionHistoryService;
     }
     
     /**
@@ -91,68 +99,129 @@ public class SpeechRecognitionDispatcher {
     /**
      * 执行语音识别，实现智能切换逻辑
      * @param audioFile 音频文件
+     * @param userId 用户ID
+     * @param characterInfo 角色信息（可选）
      * @return 识别结果
      */
-    public String recognizeSpeech(MultipartFile audioFile) {
-        // 默认优先使用离线服务
-        SpeechRecognitionService primaryService = offlineService;
-        SpeechRecognitionService fallbackService = onlineService;
-        String result;
-
-        // 带退避的重试机制配置
-        int maxRetries = 5;
-        long initialDelayMs = 1000; // 初始延迟1秒
-        double backoffMultiplier = 1.5; // 退避倍数
-
+    public String recognizeSpeech(MultipartFile audioFile, String userId, String characterInfo) {
+        // 创建历史记录对象
+        SpeechRecognitionHistory history = new SpeechRecognitionHistory();
+        history.setUserId(userId);
+        history.setCharacterInfo(characterInfo != null ? characterInfo : "");
+        history.setAudioDuration((int) Math.round(calculateAudioDuration(audioFile.getSize())));
+        history.setSuccess(false);
+        
+        // 记录开始时间
+        LocalDateTime startTime = LocalDateTime.now();
+        String result = null;
+        String errorMessage = null;
+        SpeechRecognitionService.RecognitionType recognitionType = null;
+        
         try {
-            // 首先检查离线服务是否可用
-            if (!primaryService.isAvailable()) {
-                logger.warning("离线语音识别服务不可用，直接使用在线服务");
-                return fallbackService.recognizeSpeech(audioFile);
-            }
+            // 默认优先使用离线服务
+            SpeechRecognitionService primaryService = offlineService;
+            SpeechRecognitionService fallbackService = onlineService;
 
-            // 尝试使用离线服务进行识别，带退避重试
-            for (int attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    result = primaryService.recognizeSpeech(audioFile);
-                    logger.info("离线语音识别成功，使用服务类型: " + primaryService.getServiceType() + ", 尝试次数: " + (attempt + 1));
-                    return result;
-                } catch (Exception e) {
-                    logger.warning("离线语音识别第" + (attempt + 1) + "次失败: " + e.getMessage());
-                     
-                    // 如果不是最后一次尝试，则等待后重试
-                    if (attempt < maxRetries - 1) {
-                        long delayMs = (long) (initialDelayMs * Math.pow(backoffMultiplier, attempt));
-                        logger.info("将在" + delayMs + "毫秒后重试离线识别");
+            // 带退避的重试机制配置
+            int maxRetries = 5;
+            long initialDelayMs = 1000; // 初始延迟1秒
+            double backoffMultiplier = 1.5; // 退避倍数
+
+            try {
+                // 首先检查离线服务是否可用
+                if (!primaryService.isAvailable()) {
+                    logger.warning("离线语音识别服务不可用，直接使用在线服务");
+                    result = fallbackService.recognizeSpeech(audioFile);
+                    recognitionType = fallbackService.getRecognitionType();
+                } else {
+                    // 尝试使用离线服务进行识别，带退避重试
+                    for (int attempt = 0; attempt < maxRetries; attempt++) {
                         try {
-                            Thread.sleep(delayMs);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            logger.warning("重试等待被中断，将进行下一次尝试");
+                            result = primaryService.recognizeSpeech(audioFile);
+                            recognitionType = primaryService.getRecognitionType();
+                            logger.info("离线语音识别成功，使用服务类型: " + primaryService.getServiceType() + ", 尝试次数: " + (attempt + 1));
+                            break;
+                        } catch (Exception e) {
+                            logger.warning("离线语音识别第" + (attempt + 1) + "次失败: " + e.getMessage());
+
+                            // 如果不是最后一次尝试，则等待后重试
+                            if (attempt < maxRetries - 1) {
+                                long delayMs = (long) (initialDelayMs * Math.pow(backoffMultiplier, attempt));
+                                logger.info("将在" + delayMs + "毫秒后重试离线识别");
+                                try {
+                                    Thread.sleep(delayMs);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    logger.warning("重试等待被中断，将进行下一次尝试");
+                                }
+                            } else {
+                                // 最后一次尝试失败，切换到在线服务
+                                logger.warning("离线语音识别服务重试" + maxRetries + "次均失败，切换到在线服务");
+                                if (fallbackService.isAvailable()) {
+                                    try {
+                                        result = fallbackService.recognizeSpeech(audioFile);
+                                        recognitionType = fallbackService.getRecognitionType();
+                                        logger.info("在线语音识别成功");
+                                    } catch (Exception fallbackEx) {
+                                        logger.severe("在线语音识别也失败: " + fallbackEx.getMessage());
+                                        errorMessage = "所有可用语音识别服务均失败: " + fallbackEx.getMessage();
+                                        throw new RuntimeException(errorMessage, fallbackEx);
+                                    }
+                                } else {
+                                    logger.severe("在线语音识别服务不可用");
+                                    errorMessage = "离线服务重试多次失败且在线服务不可用";
+                                    throw new RuntimeException(errorMessage);
+                                }
+                            }
                         }
                     }
                 }
+                
+                // 设置识别成功信息
+                history.setSuccess(true);
+                history.setRecognizedText(result);
+                history.setRecognitionType(SpeechRecognitionHistory.RecognitionType.valueOf(recognitionType.name()));
+                
+                return result;
+            } catch (Exception e) {
+                logger.severe("语音识别处理过程中发生错误: " + e.getMessage());
+                errorMessage = e.getMessage();
+                throw e;
             }
-
-            // 离线服务重试超过五次，切换到科大讯飞在线服务
-            logger.warning("离线语音识别服务重试" + maxRetries + "次均失败，切换到在线服务");
-            if (fallbackService.isAvailable()) {
-                try {
-                    result = fallbackService.recognizeSpeech(audioFile);
-                    logger.info("在线语音识别成功");
-                    return result;
-                } catch (Exception fallbackEx) {
-                    logger.severe("在线语音识别也失败: " + fallbackEx.getMessage());
-                    throw new RuntimeException("所有可用语音识别服务均失败", fallbackEx);
-                }
-            } else {
-                logger.severe("在线语音识别服务不可用");
-                throw new RuntimeException("离线服务重试多次失败且在线服务不可用");
+        } finally {
+            // 记录结束时间
+            LocalDateTime endTime = LocalDateTime.now();
+            
+            // 计算识别耗时
+            Duration duration = Duration.between(startTime, endTime);
+            logger.info("语音识别总耗时: " + duration.toMillis() + "毫秒");
+            
+            // 设置错误信息（如果有）
+            if (errorMessage != null) {
+                history.setErrorMessage(errorMessage);
             }
-        } catch (Exception e) {
-            logger.severe("语音识别处理过程中发生错误: " + e.getMessage());
-            throw e;
+            
+            // 保存历史记录
+            try {
+                speechRecognitionHistoryService.saveHistory(history);
+                logger.info("语音识别历史记录保存成功");
+            } catch (Exception e) {
+                // 保存历史记录失败不应影响主流程
+                logger.warning("保存语音识别历史记录失败: " + e.getMessage());
+            }
         }
+    }
+    
+    /**
+     * 计算音频文件时长（基于文件大小估算）
+     * 假设音频格式为16kHz采样率，16bit位深，单声道
+     * @param fileSize 文件大小（字节）
+     * @return 音频时长（秒）
+     */
+    private double calculateAudioDuration(long fileSize) {
+        // 16kHz, 16bit, 单声道的音频每秒约32KB
+        double bytesPerSecond = 16000 * 2; // 16kHz * 2字节/采样点
+        return fileSize / bytesPerSecond;
     }
 
     /**

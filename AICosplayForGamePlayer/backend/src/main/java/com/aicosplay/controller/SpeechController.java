@@ -44,11 +44,11 @@ public class SpeechController {
                 return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, "音频文件大小不能超过10MB"));
             }
             
-            // 使用语音识别调度器进行识别（会自动选择和切换合适的服务）
-            String recognizedText = speechRecognitionDispatcher.recognizeSpeech(audioFile);
-            
-            // 返回识别结果
-            return ResponseEntity.ok(new SpeechResponse(true, "语音识别成功", recognizedText));
+            // 调用语音识别调度器进行识别，并传递用户ID
+        String recognizedText = speechRecognitionDispatcher.recognizeSpeech(audioFile, username, "");
+        
+        // 返回识别结果
+        return ResponseEntity.ok(new SpeechResponse(true, "语音识别成功", recognizedText));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
         }

@@ -140,6 +140,11 @@ public class VoskOfflineSpeechService implements SpeechRecognitionService {
     public boolean isAvailable() {
         return initialized.get() && model != null;
     }
+    
+    @Override
+    public RecognitionType getRecognitionType() {
+        return RecognitionType.OFFLINE;
+    }
 
     /**
      * 将音频文件转换为WAV格式

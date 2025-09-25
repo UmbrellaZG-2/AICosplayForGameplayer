@@ -440,4 +440,9 @@ public class SpeechServiceImpl implements SpeechRecognitionService {
         
         return false; // 不是最终结果
     }
+
+    @Override
+    public SpeechRecognitionService.RecognitionType getRecognitionType() {
+        return SpeechRecognitionService.RecognitionType.API;
+    }
 }

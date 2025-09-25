@@ -181,6 +181,26 @@ public class ConversationController {
         }
     }
     
+    // 删除单条消息
+    @DeleteMapping("/messages/{messageId}")
+    public ResponseEntity<?> deleteMessage(@PathVariable Long messageId, HttpSession session) {
+        try {
+            // 从会话中获取当前登录用户的用户名
+            String username = (String) session.getAttribute("username");
+            if (username == null) {
+                return ResponseEntity.status(401).body(new AuthController.ApiResponse(false, "用户未登录"));
+            }
+            
+            User user = userService.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("用户不存在"));
+            
+            conversationService.deleteMessage(messageId, user);
+            return ResponseEntity.ok(new AuthController.ApiResponse(true, "删除成功"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new AuthController.ApiResponse(false, e.getMessage()));
+        }
+    }
+    
     // 恢复已删除的对话
     @PutMapping("/{id}/restore")
     public ResponseEntity<?> restoreConversation(@PathVariable Long id, HttpSession session) {
