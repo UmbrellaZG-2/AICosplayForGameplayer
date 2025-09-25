@@ -52,14 +52,14 @@ const error = ref('')
 const handleLogin = async () => {
   try {
     const response = await authAPI.login(form.value)
-    if (response.success) {
+    if (response.code === 200) {
       localStorage.setItem('isLoggedIn', 'true')
       router.push('/chat')
     } else {
-      error.value = response.message
+      error.value = response.message || '登录失败，请检查用户名和密码'
     }
   } catch (err) {
-    error.value = '登录失败，请检查网络或服务器状态'
+    error.value = err?.message || '登录失败，请检查网络或服务器状态'
   }
 }
 </script>

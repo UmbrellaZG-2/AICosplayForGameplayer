@@ -11,7 +11,7 @@
         + 新对话
       </button>
       
-      <div class="chat-history">
+      <div class="chat-history" v-if="conversations.length > 0">
         <div 
           v-for="conversation in conversations" 
           :key="conversation.id"
@@ -19,7 +19,7 @@
           :class="{ active: currentConversationId === conversation.id }"
           @click="switchConversation(conversation.id)"
         >
-          <div class="chat-title">{{ conversation.conversationTitle || '未命名对话' }}</div>
+          <div class="chat-title">{{ getConversationTitle(conversation) }}</div>
           <button class="delete-chat" @click.stop="deleteConversation(conversation.id)">×</button>
         </div>
       </div>
@@ -28,7 +28,32 @@
     <!-- 主聊天区域 -->
     <div class="chat-main" v-if="currentConversationId">
       <div class="chat-header">
-        <h2>{{ currentConversation?.conversationTitle || '未命名对话' }}</h2>
+        <div class="chat-header-left">
+          <!-- 显示角色头像 -->
+          <div v-if="currentConversation?.characterId" class="character-avatar-small">
+            <img 
+              v-if="getCharacterById(currentConversation?.characterId)?.name" 
+              :src="`/resource/Character/${getCharacterById(currentConversation?.characterId)?.name}.jpg`" 
+              :alt="getCharacterById(currentConversation?.characterId)?.name"
+              class="header-character-avatar"
+              @error="(e) => {
+                e.target.onerror = null;
+                e.target.src = `/resource/Character/${getCharacterById(currentConversation?.characterId)?.name}.png`;
+                e.target.onerror = (err) => {
+                  err.target.onerror = null;
+                  err.target.style.display = 'none';
+                  const defaultAvatar = err.target.nextElementSibling;
+                  if (defaultAvatar) {
+                    defaultAvatar.textContent = '🤖';
+                    defaultAvatar.style.display = 'block';
+                  }
+                };
+              }"
+            >
+            <span style="display: none;">🤖</span>
+          </div>
+          <h2>与{{ getCharacterName() }}的谈话</h2>
+        </div>
         <div class="header-actions">
           <button class="action-button">📝</button>
           <button class="action-button">📤</button>
@@ -72,17 +97,21 @@
         </div>
       </div>
       
-      <div class="chat-input-area">
-        <div class="input-wrapper">
+      <!-- 调整聊天输入区域位置到下方并扩大 -->
+      <div class="chat-input-area expanded">
+        <div class="input-wrapper expanded">
         <textarea 
           v-model="inputMessage"
           placeholder="输入消息..."
           @keydown.ctrl.enter="sendMessage"
+          class="expanded wider-textarea"
         ></textarea>
-        <button class="voice-button" @click="openRecordingModal" title="语音输入">
-          🎤
-        </button>
-        <button class="send-button" @click="sendMessage">发送</button>
+        <div class="input-actions">
+          <button class="voice-button" @click="openRecordingModal" title="语音输入">
+            🎤
+          </button>
+          <button class="send-button expanded" @click="sendMessage">发送</button>
+        </div>
       </div>
         <div class="input-tip">Ctrl + Enter 快速发送</div>
       </div>
@@ -300,11 +329,11 @@
         <button 
           class="confirm-button" 
           @click="toggleRecording"
-          :disabled="showRecordingModal && !isRecording"
+          :disabled="loading"
         >
           {{ isRecording ? '停止' : '开始' }}
         </button>
-        <button class="confirm-button" @click="stopRecording" :disabled="!isRecording">
+        <button class="confirm-button" @click="stopRecording" :disabled="!isRecording || loading">
           确定
         </button>
       </div>
@@ -315,7 +344,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { conversationAPI, gameCharacterAPI, speechAPI, userAPI } from '../utils/api.js'
+import { conversationAPI, gameCharacterAPI, speechAPI, userAPI, api } from '../utils/api.js'
 
 const router = useRouter()
 const conversations = ref([])
@@ -428,8 +457,9 @@ const loadConversations = async () => {
 // 加载角色列表
 const loadCharacters = async () => {
   try {
-    const data = await gameCharacterAPI.getAll()
-    characters.value = data
+    const response = await gameCharacterAPI.getAll()
+    // 从响应对象中提取data字段
+    characters.value = response.data || []
   } catch (error) {
     console.error('加载角色列表失败:', error)
   }
@@ -762,11 +792,25 @@ const createNewChatWithCharacter = async (characterId) => {
     const title = '新对话'
     const newConversation = await conversationAPI.create(title, characterId)
     
-    conversations.value.unshift(newConversation)
-    switchConversation(newConversation.id)
+    // 确保conversations.value是数组
+    if (!Array.isArray(conversations.value)) {
+      conversations.value = []
+    }
+    
+    // 检查newConversation是否有id属性，如果没有则尝试从data属性获取
+    const conversationToAdd = newConversation.data || newConversation
+    conversations.value.unshift(conversationToAdd)
+    switchConversation(conversationToAdd.id)
   } catch (error) {
     console.error('创建新对话失败:', error)
-    alert('创建新对话失败，请重试')
+    // 显示具体的错误信息
+    if (error && error.message) {
+      alert(`创建新对话失败: ${error.message}`)
+    } else if (error && error.errorMessage) {
+      alert(`创建新对话失败: ${error.errorMessage}`)
+    } else {
+      alert('创建新对话失败，请重试')
+    }
   }
 }
 
@@ -789,6 +833,47 @@ const createNewChat = () => {
   openCharacterSelectModal()
 }
 
+// 通过ID获取角色信息
+const getCharacterById = (characterId) => {
+  return characters.value.find(character => character.id === characterId)
+}
+
+// 获取当前角色的名称
+const getCharacterName = () => {
+  // 首先尝试从currentConversation获取角色信息
+  if (currentConversation.value) {
+    // 如果currentConversation有直接的角色名称属性
+    if (currentConversation.value.characterName) {
+      return currentConversation.value.characterName
+    }
+    // 否则通过characterId查找
+    if (currentConversation.value.characterId) {
+      const character = getCharacterById(currentConversation.value.characterId)
+      if (character && character.name) {
+        return character.name
+      }
+    }
+  }
+  // 如果都获取不到，返回默认名称
+  return '未命名角色'
+}
+
+// 获取对话标题（侧边栏使用）
+const getConversationTitle = (conversation) => {
+  // 首先尝试获取角色名称
+  if (conversation.characterName) {
+    return conversation.characterName
+  }
+  if (conversation.characterId) {
+    const character = getCharacterById(conversation.characterId)
+    if (character && character.name) {
+      return character.name
+    }
+  }
+  // 如果没有角色信息，回退到conversationTitle或默认名称
+  return conversation.conversationTitle || '未命名对话'
+}
+
 // 切换对话
 const switchConversation = async (id) => {
   currentConversationId.value = id
@@ -801,11 +886,105 @@ const switchConversation = async (id) => {
   setTimeout(scrollToBottom, 100)
 }
 
+// 测试API连接
+const testAPIConnection = async () => {
+  try {
+    console.log('开始测试API连接...')
+    
+    // 先尝试一个简单的GET请求，检查基本连接
+    console.log('尝试简单的GET请求...')
+    const pingResponse = await api.get('/api/auth/user')
+    console.log('GET请求成功:', pingResponse)
+    
+    // 再测试发送消息
+    const testMessage = {
+      content: '测试消息',
+      senderType: 'user'
+    }
+    
+    // 直接使用一个已知存在的对话ID进行测试
+    const testConversationId = 15 // 从后端日志中看到的对话ID
+    console.log(`尝试发送测试消息到对话ID: ${testConversationId}`)
+    
+    const startTime = Date.now()
+    const response = await api.post(`/api/conversations/${testConversationId}/messages`, testMessage)
+    const endTime = Date.now()
+    
+    console.log(`API测试成功! 响应时间: ${endTime - startTime}ms, 响应:`, response)
+    alert('API测试成功!')
+  } catch (error) {
+    console.error('API测试失败:', error)
+    console.error('错误详情:', JSON.stringify(error, null, 2))
+    
+    let errorMessage = 'API测试失败'
+    if (error.response) {
+      errorMessage += `\n状态码: ${error.response.status}`
+      errorMessage += `\n状态文本: ${error.response.statusText}`
+      if (error.response.data) {
+        errorMessage += `\n错误数据: ${JSON.stringify(error.response.data)}`
+      }
+    } else if (error.request) {
+      errorMessage += '\n网络错误: 服务器未响应'
+    } else {
+      errorMessage += `\n请求错误: ${error.message || '未知错误'}`
+    }
+    
+    alert(errorMessage)
+  }
+}
+
 // 发送消息
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || !currentConversationId.value) return
+  // 添加测试API连接的按钮
+  if (!document.getElementById('test-api-button')) {
+    const button = document.createElement('button')
+    button.id = 'test-api-button'
+    button.innerText = '测试API连接'
+    button.style.position = 'fixed'
+    button.style.top = '20px'
+    button.style.right = '20px'
+    button.style.zIndex = '1000'
+    button.onclick = testAPIConnection
+    document.body.appendChild(button)
+  }
+  
+  console.log('发送消息开始')
+  
+  // 检查输入和当前对话ID
+  if (!inputMessage.value.trim()) {
+    console.log('输入消息为空，不发送')
+    return
+  }
+  
+  // 检查currentConversationId和currentConversation是否同步
+  console.log('currentConversationId.value:', currentConversationId.value)
+  console.log('currentConversation.value:', currentConversation.value)
+  
+  // 获取对话ID的两种方式
+  const conversationIdFromRef = currentConversationId.value
+  const conversationIdFromObj = currentConversation.value?.id
+  
+  console.log('从currentConversationId获取的ID:', conversationIdFromRef)
+  console.log('从currentConversation获取的ID:', conversationIdFromObj)
+  
+  // 验证对话ID
+  let conversationId = null
+  
+  // 优先使用对象中的ID，确保使用有效的ID
+  if (conversationIdFromObj && !isNaN(conversationIdFromObj) && conversationIdFromObj > 0) {
+    conversationId = conversationIdFromObj
+    console.log('使用从currentConversation获取的有效ID:', conversationId)
+  } else if (conversationIdFromRef && !isNaN(conversationIdFromRef) && conversationIdFromRef > 0) {
+    conversationId = conversationIdFromRef
+    console.log('使用从currentConversationId获取的有效ID:', conversationId)
+  } else {
+    console.log('没有有效的对话ID')
+    alert('请先选择或创建一个对话')
+    return
+  }
   
   const content = inputMessage.value.trim()
+  console.log('发送内容:', content)
   inputMessage.value = ''
   
   try {
@@ -816,23 +995,42 @@ const sendMessage = async () => {
       content,
       createdAt: new Date()
     }
+    console.log('添加临时消息到前端:', userMessage)
     messages.value.push(userMessage)
     
     // 滚动到底部
     setTimeout(scrollToBottom, 100)
     
     // 发送到后端
-    await conversationAPI.addMessage(currentConversationId.value, {
+    console.log('准备发送到后端...')
+    console.log('发送的API参数 - conversationId:', conversationId, ', message:', {senderType: 'user', content})
+    const response = await conversationAPI.addMessage(conversationId, {
       senderType: 'user',
       content
     })
+    console.log('后端响应:', response)
     
     // 重新获取消息列表以确保数据同步
+    console.log('重新获取消息列表...')
     await fetchMessages()
+    console.log('发送消息完成')
     
   } catch (error) {
     console.error('发送消息失败:', error)
-    alert('发送消息失败，请重试')
+    console.error('错误详情:', JSON.stringify(error, null, 2))
+    // 提供更详细的错误信息
+    let errorMessage = '发送消息失败，请重试'
+    if (error.response) {
+      errorMessage += `\n错误状态码: ${error.response.status}`
+      if (error.response.data && error.response.data.message) {
+        errorMessage += `\n错误信息: ${error.response.data.message}`
+      }
+    } else if (error.request) {
+      errorMessage += '\n网络错误: 服务器未响应'
+    } else {
+      errorMessage += `\n请求错误: ${error.message || '未知错误'}`
+    }
+    alert(errorMessage)
     // 移除临时显示的消息
     messages.value.pop()
   }
@@ -840,7 +1038,12 @@ const sendMessage = async () => {
 
 // 删除对话
 const deleteConversation = async (id) => {
-  if (!confirm('确定要删除这个对话吗？')) return
+  // 弹出确认对话框，只有用户点击确定后才执行删除操作
+  const isConfirmed = confirm('确定要删除这个对话吗？删除后将无法恢复。')
+  
+  if (!isConfirmed) {
+    return // 用户取消删除操作
+  }
   
   try {
     await conversationAPI.delete(id)
@@ -999,6 +1202,16 @@ const copyMessage = (content) => {
   background-color: #f5f5f5;
 }
 
+.chat-main.expanded {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: white;
+}
+
 .chat-header {
   padding: 20px;
   background-color: white;
@@ -1006,6 +1219,32 @@ const copyMessage = (content) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #e0e0e0;
+}
+
+.character-avatar-small {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-header h2 {
@@ -1044,6 +1283,8 @@ const copyMessage = (content) => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background-color: white;
+  margin-bottom: 0;
 }
 
 .message-wrapper {
@@ -1181,12 +1422,41 @@ const copyMessage = (content) => {
   padding: 20px;
   background-color: white;
   border-top: 1px solid #dee2e6;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+/* 更宽的输入框样式 */
+.wider-textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-input-area.expanded {
+  min-height: 150px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .input-wrapper {
   display: flex;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.input-wrapper.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 15px;
+  width: 100%;
+}
+
+.input-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .input-wrapper textarea {
@@ -1199,6 +1469,15 @@ const copyMessage = (content) => {
   resize: none;
   min-height: 40px;
   max-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input-wrapper textarea.expanded {
+  min-height: 100px;
+  font-size: 16px;
+  padding: 15px;
+  max-height: 200px;
 }
 
 .input-wrapper textarea:focus {
@@ -1207,8 +1486,8 @@ const copyMessage = (content) => {
 }
 
 .voice-button {
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   border: 1px solid #dee2e6;
   background-color: white;
   border-radius: 8px;
@@ -1216,7 +1495,7 @@ const copyMessage = (content) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
   transition: all 0.2s;
 }
 
@@ -1235,6 +1514,12 @@ const copyMessage = (content) => {
   font-size: 14px;
   font-weight: 500;
   transition: background-color 0.2s;
+}
+
+.send-button.expanded {
+  padding: 15px 30px;
+  font-size: 16px;
+  min-width: 120px;
 }
 
 .send-button:hover {
@@ -1377,12 +1662,28 @@ const copyMessage = (content) => {
   background-color: #f8f9fa;
 }
 
+.character-item.selected {
+  border-color: #4CAF50;
+  background-color: #e8f5e9;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
 .character-avatar {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  object-fit: cover;
   margin-bottom: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.character-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .character-name {
@@ -1494,6 +1795,30 @@ const copyMessage = (content) => {
 @keyframes sound-wave {
   0%, 100% { height: 20%; }
   50% { height: 100%; }
+}
+
+/* 选择对话提示样式 */
+.select-chat-tip {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f2f5;
+}
+
+.tip-content {
+  text-align: center;
+  color: #666;
+}
+
+.tip-content h3 {
+  margin-bottom: 10px;
+  color: #333;
+  font-size: 24px;
+}
+
+.tip-content p {
+  font-size: 16px;
 }
 
 /* 响应式设计 */
