@@ -3,6 +3,8 @@ package com.aicosplay.service.impl;
 import com.aicosplay.entity.SpeechRecognitionHistory;
 import com.aicosplay.repository.SpeechRecognitionHistoryRepository;
 import com.aicosplay.service.SpeechRecognitionHistoryService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,7 +49,8 @@ public class SpeechRecognitionHistoryServiceImpl implements SpeechRecognitionHis
     
     @Override
     public List<SpeechRecognitionHistory> getLatestHistoriesByUserId(String userId, int limit) {
-        return speechRecognitionHistoryRepository.findTopNByUserIdOrderByCreatedAtDesc(userId, limit);
+        Pageable pageable = PageRequest.of(0, limit);
+        return speechRecognitionHistoryRepository.findTop100ByUserIdOrderByCreatedAtDesc(userId, pageable);
     }
     
     @Override

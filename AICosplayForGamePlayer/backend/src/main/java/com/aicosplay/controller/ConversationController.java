@@ -60,12 +60,7 @@ public class ConversationController {
         // 获取当前登录用户
         User user = UserContext.getCurrentUser();
         
-        Conversation conversation = conversationService.getConversationById(id);
-        
-        // 验证对话是否属于当前用户
-        if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new BusinessException("FORBIDDEN", "您没有权限访问此对话");
-        }
+        Conversation conversation = conversationService.getConversationById(id, user);
         
         return ResponseEntity.ok(ApiResponse.success(conversation));
     }
@@ -75,12 +70,6 @@ public class ConversationController {
     public ResponseEntity<ApiResponse<Message>> addMessage(@PathVariable Long id, @RequestBody MessageRequest request) {
         // 获取当前登录用户
         User user = UserContext.getCurrentUser();
-        
-        // 验证对话是否属于当前用户
-        Conversation conversation = conversationService.getConversationById(id);
-        if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new BusinessException("FORBIDDEN", "您没有权限访问此对话");
-        }
         
         // 调用更新后的方法，senderType始终为USER，因为AI回复是自动生成的
         Message message = conversationService.addMessageToConversation(
@@ -97,12 +86,7 @@ public class ConversationController {
         // 获取当前登录用户
         User user = UserContext.getCurrentUser();
         
-        Conversation conversation = conversationService.getConversationById(id);
-        
-        // 验证对话是否属于当前用户
-        if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new BusinessException("FORBIDDEN", "您没有权限访问此对话");
-        }
+        Conversation conversation = conversationService.getConversationById(id, user);
         
         List<Message> messages = conversationService.getConversationMessages(conversation);
         return ResponseEntity.ok(ApiResponse.success(messages));
@@ -114,14 +98,7 @@ public class ConversationController {
         // 获取当前登录用户
         User user = UserContext.getCurrentUser();
         
-        Conversation conversation = conversationService.getConversationById(id);
-        
-        // 验证对话是否属于当前用户
-        if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new BusinessException("FORBIDDEN", "您没有权限删除此对话");
-        }
-        
-        conversationService.deleteConversation(id);
+        conversationService.deleteConversation(id, user);
         return ResponseEntity.ok(ApiResponse.success("对话删除成功"));
     }
     
@@ -141,16 +118,7 @@ public class ConversationController {
         // 获取当前登录用户
         User user = UserContext.getCurrentUser();
         
-        // 直接获取对话而不检查是否已删除
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("对话不存在"));
-        
-        // 验证对话是否属于当前用户
-        if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new BusinessException("FORBIDDEN", "您没有权限恢复此对话");
-        }
-        
-        conversationService.restoreConversation(id);
+        conversationService.restoreConversation(id, user);
         return ResponseEntity.ok(ApiResponse.success("对话恢复成功"));
     }
     

@@ -1,10 +1,8 @@
 package com.aicosplay.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
 import java.time.LocalDateTime;
 
-@Data
 @Entity
 @Table(name = "speech_recognition_history", indexes = {
         @Index(name = "idx_user_id", columnList = "user_id"),
@@ -44,6 +42,79 @@ public class SpeechRecognitionHistory {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+    }
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public String getCharacterInfo() {
+        return characterInfo;
+    }
+
+    public void setCharacterInfo(String characterInfo) {
+        this.characterInfo = characterInfo;
+    }
+
+    public RecognitionType getRecognitionType() {
+        return recognitionType;
+    }
+
+    public void setRecognitionType(RecognitionType recognitionType) {
+        this.recognitionType = recognitionType;
+    }
+
+    public String getRecognizedText() {
+        return recognizedText;
+    }
+
+    public void setRecognizedText(String recognizedText) {
+        this.recognizedText = recognizedText;
+    }
+
+    public Integer getAudioDuration() {
+        return audioDuration;
+    }
+
+    public void setAudioDuration(Integer audioDuration) {
+        this.audioDuration = audioDuration;
+    }
+
+    public Boolean getSuccess() {
+        return success;
+    }
+
+    public void setSuccess(Boolean success) {
+        this.success = success;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     public enum RecognitionType {

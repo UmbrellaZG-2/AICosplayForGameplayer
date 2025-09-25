@@ -1,11 +1,8 @@
 package com.aicosplay.security.filter;
 
-import lombok.Data;
-
 /**
  * 安全上下文类，用于在责任链过滤器之间传递数据
  */
-@Data
 public class SecurityContext {
     
     // 用户输入的原始提示词
@@ -36,5 +33,62 @@ public class SecurityContext {
     public void markUnsafe(String errorMessage) {
         this.isSafe = false;
         this.errorMessage = errorMessage;
+    }
+
+    // Getters and Setters
+    public String getUserPrompt() {
+        return userPrompt;
+    }
+
+    public void setUserPrompt(String userPrompt) {
+        this.userPrompt = userPrompt;
+    }
+
+    public String getProcessedPrompt() {
+        return processedPrompt;
+    }
+
+    public void setProcessedPrompt(String processedPrompt) {
+        this.processedPrompt = processedPrompt;
+    }
+
+    public String getRawResponse() {
+        return rawResponse;
+    }
+
+    public void setRawResponse(String rawResponse) {
+        this.rawResponse = rawResponse;
+    }
+
+    public String getProcessedResponse() {
+        return processedResponse;
+    }
+
+    public void setProcessedResponse(String processedResponse) {
+        this.processedResponse = processedResponse;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
+    public String getContext() {
+        return context;
+    }
+
+    public void setContext(String context) {
+        this.context = context;
+    }
+
+    public boolean isSafe() {
+        return isSafe;
+    }
+
+    public void setSafe(boolean safe) {
+        isSafe = safe;
     }
 }

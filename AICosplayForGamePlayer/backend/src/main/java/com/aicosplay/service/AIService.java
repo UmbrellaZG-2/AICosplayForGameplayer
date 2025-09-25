@@ -3,6 +3,8 @@ package com.aicosplay.service;
 import com.aicosplay.exception.BusinessException;
 import com.aicosplay.security.filter.SecurityContext;
 import com.aicosplay.security.filter.SecurityFilterChainManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.messages.Message;
@@ -16,6 +18,7 @@ import java.util.List;
 @Service
 public class AIService {
 
+    private static final Logger logger = LoggerFactory.getLogger(AIService.class);
     private final ChatClient chatClient;
     private final SecurityFilterChainManager securityFilterChainManager;
 
@@ -32,31 +35,7 @@ public class AIService {
      * @throws SecurityException 如果安全检查未通过
      */
     public String generateResponse(String prompt) {
-        // 创建安全上下文
-        SecurityContext context = securityFilterChainManager.createContext(prompt, null);
-        
-        // 执行输入安全检查（责任链的前两个过滤器：提示词注入检测和风险内容检测）
-        if (!securityFilterChainManager.executeFilterChain(context)) {
-            throw new SecurityException("输入安全检查未通过: " + context.getErrorMessage());
-        }
-        
-        // 使用经过处理的提示词调用大模型
-        String safePrompt = context.getProcessedPrompt() != null ? context.getProcessedPrompt() : prompt;
-        Message userMessage = new UserMessage(safePrompt);
-        Prompt requestPrompt = new Prompt(List.of(userMessage));
-        ChatResponse response = chatClient.call(requestPrompt);
-        
-        // 获取原始响应
-        String rawResponse = response.getResult().getOutput().getContent();
-        context.setRawResponse(rawResponse);
-        
-        // 执行输出安全检查（继续执行责任链的剩余过滤器：模型幻觉检测和回答对齐检测）
-        if (!securityFilterChainManager.executeFilterChain(context)) {
-            throw new SecurityException("输出安全检查未通过: " + context.getErrorMessage());
-        }
-        
-        // 返回经过处理的安全响应
-        return context.getProcessedResponse() != null ? context.getProcessedResponse() : rawResponse;
+        return generateResponseInternal(prompt, null, null, null, false);
     }
 
     /**
@@ -67,36 +46,7 @@ public class AIService {
      * @throws SecurityException 如果安全检查未通过
      */
     public String generateResponseWithContext(String prompt, String context) {
-        // 创建安全上下文
-        SecurityContext securityContext = securityFilterChainManager.createContext(prompt, context);
-        
-        // 执行输入安全检查
-        if (!securityFilterChainManager.executeFilterChain(securityContext)) {
-            throw new SecurityException("输入安全检查未通过: " + securityContext.getErrorMessage());
-        }
-        
-        // 构建包含上下文的完整提示词
-        String processedPrompt = securityContext.getProcessedPrompt() != null ? 
-                                 securityContext.getProcessedPrompt() : prompt;
-        String fullPrompt = buildPromptWithContext(processedPrompt, context);
-        
-        // 使用大模型生成回复
-        Message userMessage = new UserMessage(fullPrompt);
-        Prompt requestPrompt = new Prompt(List.of(userMessage));
-        ChatResponse response = chatClient.call(requestPrompt);
-        
-        // 获取原始响应
-        String rawResponse = response.getResult().getOutput().getContent();
-        securityContext.setRawResponse(rawResponse);
-        
-        // 执行输出安全检查
-        if (!securityFilterChainManager.executeFilterChain(securityContext)) {
-            throw new SecurityException("输出安全检查未通过: " + securityContext.getErrorMessage());
-        }
-        
-        // 返回经过处理的安全响应
-        return securityContext.getProcessedResponse() != null ? 
-               securityContext.getProcessedResponse() : rawResponse;
+        return generateResponseInternal(prompt, context, null, null, false);
     }
     
     /**
@@ -112,20 +62,39 @@ public class AIService {
     public String generateResponseWithContext(String userPrompt, String context, 
                                              String characterPrompt, String username, 
                                              boolean isFirstMessage) {
+        return generateResponseInternal(userPrompt, context, characterPrompt, username, isFirstMessage);
+    }
+    
+    /**
+     * 核心方法：使用大模型生成回复，支持各种参数组合
+     * @param prompt 用户输入的提示词
+     * @param context 对话上下文
+     * @param characterPrompt 角色设定提示词
+     * @param username 用户名
+     * @param isFirstMessage 是否首次对话
+     * @return 大模型生成的回复内容
+     */
+    private String generateResponseInternal(String prompt, String context, 
+                                           String characterPrompt, String username, 
+                                           boolean isFirstMessage) {
+        // 记录请求信息（不记录具体内容，仅记录请求类型）
+        logger.debug("Generating AI response with context: {}", context != null);
+        
         // 创建安全上下文
-        SecurityContext securityContext = securityFilterChainManager.createContext(userPrompt, context);
+        SecurityContext securityContext = securityFilterChainManager.createContext(prompt, context);
         
         // 执行输入安全检查
         if (!securityFilterChainManager.executeFilterChain(securityContext)) {
+            logger.warn("Input security check failed: {}", securityContext.getErrorMessage());
             throw new SecurityException("输入安全检查未通过: " + securityContext.getErrorMessage());
         }
         
-        // 构建包含角色设定和用户信息的完整提示词
+        // 构建完整提示词
         String processedPrompt = securityContext.getProcessedPrompt() != null ? 
-                                 securityContext.getProcessedPrompt() : userPrompt;
+                                 securityContext.getProcessedPrompt() : prompt;
         
         String fullPrompt;
-        if (isFirstMessage) {
+        if (isFirstMessage && characterPrompt != null && username != null) {
             // 首次对话，需要发送角色设定和用户信息
             fullPrompt = buildPromptWithCharacterAndUserInfo(
                     processedPrompt, 
@@ -133,9 +102,12 @@ public class AIService {
                     characterPrompt, 
                     username
             );
-        } else {
-            // 非首次对话，只发送用户输入和上下文
+        } else if (context != null) {
+            // 有上下文，发送用户输入和上下文
             fullPrompt = buildPromptWithContext(processedPrompt, context);
+        } else {
+            // 无上下文，仅发送用户输入
+            fullPrompt = processedPrompt;
         }
         
         // 使用大模型生成回复
@@ -149,12 +121,16 @@ public class AIService {
         
         // 执行输出安全检查
         if (!securityFilterChainManager.executeFilterChain(securityContext)) {
+            logger.warn("Output security check failed: {}", securityContext.getErrorMessage());
             throw new SecurityException("输出安全检查未通过: " + securityContext.getErrorMessage());
         }
         
         // 返回经过处理的安全响应
-        return securityContext.getProcessedResponse() != null ? 
-               securityContext.getProcessedResponse() : rawResponse;
+        String finalResponse = securityContext.getProcessedResponse() != null ? 
+                              securityContext.getProcessedResponse() : rawResponse;
+        
+        logger.debug("AI response generation completed successfully");
+        return finalResponse;
     }
 
     /**

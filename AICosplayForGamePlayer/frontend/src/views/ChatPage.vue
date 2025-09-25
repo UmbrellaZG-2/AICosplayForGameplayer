@@ -36,10 +36,38 @@
       </div>
       
       <div class="chat-messages">
-        <div v-for="message in messages" :key="message.id" class="message-wrapper">
-          <div :class="['message', message.senderType]">
-            <div class="message-avatar">{{ message.senderType === 'user' ? '👤' : '🤖' }}</div>
-            <div class="message-content">{{ message.content }}</div>
+        <div v-for="message in messages" :key="message.id" :class="['message-wrapper', message.senderType]">
+          <!-- 语音消息显示 -->
+          <template v-if="message.isVoiceMessage">
+            <div class="message">
+              <div class="message-avatar">{{ message.senderType === 'user' ? '👤' : '🤖' }}</div>
+              <div :class="['message-voice', message.senderType]">
+                <button class="voice-play-button" @click="playVoiceMessage(message)">
+                  <span class="voice-icon">▶</span>
+                  <span class="voice-duration">{{ message.voiceDuration }}s</span>
+                </button>
+              </div>
+            </div>
+          </template>
+          <!-- 普通文本消息显示 -->
+          <template v-else>
+            <div class="message">
+              <div class="message-avatar">{{ message.senderType === 'user' ? '👤' : '🤖' }}</div>
+              <div :class="['message-content', message.senderType]">{{ message.content }}</div>
+            </div>
+          </template>
+          <!-- AI消息的"显示文字"按钮 -->
+          <div v-if="message.senderType === 'ai' && message.isVoiceMessage" class="ai-message-actions">
+            <button class="action-btn" @click="toggleAiMessageText(message)">
+              {{ message.showText ? '隐藏文字' : '显示文字' }}
+            </button>
+          </div>
+          <!-- 显示AI消息的文字内容（如果用户点击了"显示文字"） -->
+          <div v-if="message.senderType === 'ai' && message.isVoiceMessage && message.showText" class="ai-message-text">
+            <div class="message">
+              <div class="message-avatar">🤖</div>
+              <div class="message-content ai">{{ message.content }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -285,9 +313,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { conversationAPI, gameCharacterAPI, speechAPI } from '../utils/api.js'
+import { ElMessage } from 'element-plus'
+import { conversationAPI, gameCharacterAPI, speechAPI, userAPI } from '../utils/api.js'
 
 const router = useRouter()
 const conversations = ref([])
@@ -318,6 +347,36 @@ let mediaRecorder = null
 let audioChunks = []
 let recordingInterval = null
 let stream = null
+let loading = ref(false) // 添加loading状态变量
+
+// 获取消息列表
+const fetchMessages = async () => {
+  if (!currentConversationId.value) return
+  
+  try {
+    const data = await conversationAPI.getMessages(currentConversationId.value)
+    // 为AI语音消息添加showText属性，默认为false
+    messages.value = data.map(msg => ({
+      ...msg,
+      showText: false // 默认不显示AI消息的文字
+    }))
+    
+    // 滚动到底部
+    setTimeout(scrollToBottom, 100)
+  } catch (error) {
+    console.error('加载消息失败:', error)
+    messages.value = []
+  }
+}
+
+// 滚动到底部
+const scrollToBottom = async () => {
+  await nextTick()
+  const chatMessagesElement = document.querySelector('.chat-messages')
+  if (chatMessagesElement) {
+    chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight
+  }
+}
 
 // 切换录音状态（开始/停止）
 const toggleRecording = async () => {
@@ -329,9 +388,16 @@ const toggleRecording = async () => {
 }
 
 // 初始化时加载对话列表和角色列表
-onMounted(() => {
-  loadConversations()
-  loadCharacters()
+onMounted(async () => {
+  await loadConversations()
+  await loadCharacters()
+  
+  // 如果有对话，加载第一条对话的消息
+  if (conversations.value.length > 0 && !currentConversationId.value) {
+    currentConversationId.value = conversations.value[0].id
+    currentConversation.value = conversations.value[0]
+    await fetchMessages()
+  }
 })
 
 onUnmounted(() => {
@@ -384,109 +450,183 @@ const openRecordingModal = () => {
 // 开始录音
 const startRecording = async () => {
   try {
-    // 获取用户媒体设备权限
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    
-    // 创建MediaRecorder实例
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-    
     // 重置录音数据
     audioChunks = []
     
+    // 获取用户媒体设备
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    
+    // 创建MediaRecorder实例
+    const options = {
+      mimeType: 'audio/webm;codecs=opus'
+    }
+    
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+      options.mimeType = 'audio/webm'
+    }
+    
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+      options.mimeType = 'audio/ogg;codecs=opus'
+    }
+    
+    mediaRecorder = new MediaRecorder(stream, options)
+    
     // 监听数据可用事件
-    mediaRecorder.addEventListener('dataavailable', event => {
-      audioChunks.push(event.data)
-    })
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data)
+      }
+    }
     
     // 开始录音
     mediaRecorder.start()
     
-    isRecording.value = true
-    recordingDuration.value = 0
+    isRecording.value = true;
+    recordingDuration.value = 0;
     
     // 开始计时，并添加60秒时间限制
     recordingInterval = setInterval(() => {
-      recordingDuration.value++
+      recordingDuration.value++;
       
       // 如果录音时长达到60秒，自动停止录音
       if (recordingDuration.value >= 60) {
-        stopRecording()
+        stopRecording();
       }
-    }, 1000)
+    }, 1000);
     
-    console.log('录音开始')
+    console.log('录音开始');
   } catch (error) {
-    console.error('开始录音失败:', error)
-    alert('开始录音失败，请检查麦克风权限')
-    showRecordingModal.value = false
+    console.error('开始录音失败:', error);
+    alert('开始录音失败，请检查麦克风权限');
+    showRecordingModal.value = false;
   }
-}
+};
 
 // 停止录音并处理
 const stopRecording = async () => {
   try {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       // 停止录音
-      mediaRecorder.stop()
+      mediaRecorder.stop();
     }
     
     // 停止计时器
     if (recordingInterval) {
-      clearInterval(recordingInterval)
-      recordingInterval = null
+      clearInterval(recordingInterval);
+      recordingInterval = null;
     }
     
-    isRecording.value = false
+    isRecording.value = false;
     
     // 停止媒体流
     if (stream) {
-      stream.getTracks().forEach(track => track.stop())
-      stream = null
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
     }
     
     // 等待录音数据处理完成
     await new Promise(resolve => {
       if (mediaRecorder && mediaRecorder.state === 'inactive') {
-        resolve()
+        resolve();
       } else {
-        mediaRecorder.addEventListener('stop', resolve, { once: true })
+        mediaRecorder.addEventListener('stop', resolve, { once: true });
       }
-    })
+    });
     
     // 发送音频到后端转文字
     if (audioChunks.length > 0) {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
-      await convertSpeechToText(audioBlob)
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      await convertSpeechToText(audioBlob);
     }
     
-    showRecordingModal.value = false
-    console.log('录音停止并处理完成')
+    showRecordingModal.value = false;
+    console.log('录音停止并处理完成');
   } catch (error) {
-    console.error('停止录音失败:', error)
-    alert('停止录音失败，请重试')
-    showRecordingModal.value = false
+    console.error('停止录音失败:', error);
+    alert('停止录音失败，请重试');
+    showRecordingModal.value = false;
   }
-}
+};
 
-// 将语音转换为文字
-const convertSpeechToText = async (audioBlob) => {
-  try {
-    // 调用语音识别API
-    const response = await speechAPI.recognize(audioBlob)
+// 语音识别并转换为文本
+    const convertSpeechToText = async (audioBlob) => {
+      try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob);
+        
+        // 显示加载状态
+        loading.value = true;
+        
+        // 调用语音识别API
+        const response = await speechAPI.recognize(formData);
+        const recognizedText = response.data.text;
+        
+        // 创建语音消息对象
+        const voiceMessage = {
+          id: Date.now(), // 临时ID，后端会覆盖
+          content: recognizedText,
+          senderType: 'user',
+          conversationId: currentConversation.value.id,
+          isVoiceMessage: true,
+          voiceDuration: Math.round(audioBlob.duration || 0), // 音频时长
+          voiceUrl: URL.createObjectURL(audioBlob), // 临时URL用于前端播放
+          timestamp: new Date().toISOString()
+        };
+        
+        // 先在前端显示语音消息
+        messages.value.push(voiceMessage);
+        
+        // 滚动到底部
+        scrollToBottom();
+        
+        // 发送消息到后端
+        const messageData = {
+          content: recognizedText,
+          senderType: 'user',
+          isVoiceMessage: true,
+          voiceDuration: Math.round(audioBlob.duration || 0)
+        };
+        
+        try {
+          await conversationAPI.addMessage(currentConversation.value.id, messageData);
+          // 重新获取消息列表，确保数据同步
+          await fetchMessages();
+        } catch (error) {
+          console.error('发送消息失败:', error);
+          ElMessage.warning('消息已显示但发送失败，将在网络恢复后自动重试');
+        }
+        
+      } catch (error) {
+        console.error('语音识别失败:', error);
+        ElMessage.error('语音识别失败，请重试');
+      } finally {
+        loading.value = false;
+      }
+    };
     
-    // 检查响应并填充识别结果
-    if (response && response.text) {
-      inputMessage.value = response.text
-    } else {
-      // 如果后端API不可用，使用模拟结果
-      inputMessage.value = '这是一段模拟的语音识别结果。在实际项目中，这里会显示从后端API返回的真实语音识别结果。'
-    }
-  } catch (error) {
-    console.error('语音转文字失败:', error)
-    // 错误处理：如果API调用失败，使用模拟结果
-    inputMessage.value = '语音识别服务暂时不可用，这是一段模拟的语音识别结果。'
-  }
-}
+    // 播放语音消息
+    const playVoiceMessage = async (message) => {
+      try {
+        // 如果消息有本地语音URL，直接播放
+        if (message.voiceUrl) {
+          const audio = new Audio(message.voiceUrl);
+          await audio.play();
+        } else {
+          // 否则从后端获取语音文件
+          const audioUrl = `/api/speech/${message.id}/play`;
+          const audio = new Audio(audioUrl);
+          await audio.play();
+        }
+      } catch (error) {
+        console.error('播放语音失败:', error);
+        ElMessage.error('播放语音失败');
+      }
+    };
+    
+    // 切换AI消息文字显示状态
+    const toggleAiMessageText = (message) => {
+      message.showText = !message.showText;
+    };
 
 // 打开角色选择模态框
 const openCharacterSelectModal = () => {
@@ -636,13 +776,10 @@ const switchConversation = async (id) => {
   currentConversation.value = conversations.value.find(c => c.id === id)
   
   // 加载该对话的消息
-  try {
-    const data = await conversationAPI.getMessages(id)
-    messages.value = data
-  } catch (error) {
-    console.error('加载消息失败:', error)
-    messages.value = []
-  }
+  await fetchMessages()
+  
+  // 滚动到底部
+  setTimeout(scrollToBottom, 100)
 }
 
 // 发送消息
@@ -662,32 +799,21 @@ const sendMessage = async () => {
     }
     messages.value.push(userMessage)
     
+    // 滚动到底部
+    setTimeout(scrollToBottom, 100)
+    
     // 发送到后端
     await conversationAPI.addMessage(currentConversationId.value, {
       senderType: 'user',
       content
     })
     
-    // 模拟AI回复
-    setTimeout(() => {
-      const aiMessage = {
-        id: Date.now() + 1, // 临时ID
-        senderType: 'ai',
-        content: '感谢您的提问！我是AICosplay助手，很高兴为您提供帮助。',
-        createdAt: new Date()
-      }
-      messages.value.push(aiMessage)
-      
-      // 发送AI消息到后端
-      conversationAPI.addMessage(currentConversationId.value, {
-        senderType: 'ai',
-        content: aiMessage.content
-      })
-    }, 1000)
+    // 重新获取消息列表以确保数据同步
+    await fetchMessages()
     
   } catch (error) {
     console.error('发送消息失败:', error)
-    alert('发送消息失败，请重试')
+    ElMessage.error('发送消息失败，请重试')
     // 移除临时显示的消息
     messages.value.pop()
   }
@@ -713,9 +839,56 @@ const deleteConversation = async (id) => {
 }
 
 // 退出登录
-const handleLogout = () => {
-  localStorage.removeItem('isLoggedIn')
-  router.push('/')
+const handleLogout = async () => {
+  try {
+    // 调用退出登录API
+    await userAPI.logout();
+    
+    // 清除本地存储
+    localStorage.removeItem('token');
+    localStorage.removeItem('userInfo');
+    
+    // 重定向到登录页面
+    router.push('/login');
+  } catch (error) {
+    console.error('退出登录失败:', error);
+  }
+};
+
+// 复制消息
+const copyMessage = (content) => {
+  navigator.clipboard.writeText(content)
+    .then(() => {
+      alert('复制成功')
+    })
+    .catch(err => {
+      console.error('复制失败:', err)
+      alert('复制失败，请手动复制')
+    })
+}
+
+// 将文本转换为语音
+const convertTextToVoice = async (message) => {
+  try {
+    // 调用文本转语音API
+    const response = await speechAPI.textToSpeech({
+      text: message.content,
+      characterName: currentConversation?.characterName || ''
+    })
+    
+    if (response && response.success) {
+      // 更新消息状态
+      message.hasConvertedToVoice = true
+      
+      // 显示成功提示
+      alert('文本已成功转换为语音')
+    } else {
+      throw new Error('转换失败')
+    }
+  } catch (error) {
+    console.error('文本转语音失败:', error)
+    alert('文本转语音失败，请重试')
+  }
 }
 </script>
 
@@ -723,145 +896,127 @@ const handleLogout = () => {
 .chat-container {
   display: flex;
   height: 100vh;
-  background-color: #f0f2f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* 侧边栏样式 */
 .sidebar {
-  width: 280px;
-  background-color: #fff;
-  border-right: 1px solid #e0e0e0;
+  width: 300px;
+  background-color: #f8f9fa;
+  border-right: 1px solid #dee2e6;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 }
 
 .sidebar-header {
   padding: 20px;
-  border-bottom: 1px solid #e0e0e0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  border-bottom: 1px solid #dee2e6;
 }
 
-.sidebar-header h3 {
-  color: #333;
+.sidebar-header h2 {
   margin: 0;
-}
-
-.logout-button {
-  padding: 6px 12px;
-  background-color: #f44336;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.logout-button:hover {
-  background-color: #d32f2f;
+  margin-bottom: 15px;
+  font-size: 20px;
+  color: #333;
 }
 
 .new-chat-button {
-  margin: 15px;
-  padding: 12px 20px;
+  width: 100%;
+  padding: 10px 15px;
   background-color: #4CAF50;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 16px;
-  transition: background-color 0.3s;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
 }
 
 .new-chat-button:hover {
   background-color: #45a049;
 }
 
-.chat-history {
+.conversation-list {
   flex: 1;
   overflow-y: auto;
   padding: 10px;
 }
 
-.chat-item {
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 6px;
+.conversation-item {
+  padding: 15px;
+  margin-bottom: 10px;
+  background-color: white;
+  border-radius: 8px;
   cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.conversation-item:hover {
+  background-color: #f0f0f0;
+}
+
+.conversation-item.active {
+  border-color: #4CAF50;
+  background-color: #e8f5e9;
+}
+
+.conversation-title {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.conversation-character {
+  font-size: 12px;
+  color: #666;
+}
+
+.sidebar-footer {
+  padding: 20px;
+  border-top: 1px solid #dee2e6;
+}
+
+.logout-button {
+  width: 100%;
+  padding: 10px 15px;
+  background-color: transparent;
+  color: #666;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.logout-button:hover {
   background-color: #f8f9fa;
-}
-
-.chat-item:hover {
-  background-color: #e9ecef;
-}
-
-.chat-item.active {
-  background-color: #e3f2fd;
-  border-left: 4px solid #2196f3;
-}
-
-.chat-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-right: 10px;
   color: #333;
 }
 
-.delete-chat {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: #999;
-  cursor: pointer;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.chat-item:hover .delete-chat {
-  opacity: 1;
-}
-
-.delete-chat:hover {
-  background-color: #ff5252;
-  color: white;
-}
-
 /* 主聊天区域样式 */
-.chat-main {
+.main-chat-area {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #fff;
+  background-color: #f5f5f5;
 }
 
 .chat-header {
-  padding: 20px 30px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 20px;
+  background-color: white;
+  border-bottom: 1px solid #dee2e6;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fff;
 }
 
 .chat-header h2 {
   margin: 0;
-  color: #333;
   font-size: 20px;
+  color: #333;
 }
 
 .header-actions {
@@ -870,49 +1025,57 @@ const handleLogout = () => {
 }
 
 .action-button {
-  background: none;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 6px 10px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #dee2e6;
+  background-color: white;
+  border-radius: 6px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 16px;
+  transition: all 0.2s;
 }
 
 .action-button:hover {
-  background-color: #f5f5f5;
+  background-color: #f8f9fa;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 30px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  background-color: #f9f9f9;
 }
 
 .message-wrapper {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .message-wrapper.user {
-  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.message-wrapper.ai {
+  align-items: flex-start;
 }
 
 .message {
   display: flex;
   gap: 12px;
   max-width: 70%;
-}
-
-.message.user {
-  justify-content: flex-end;
+  align-items: flex-start;
 }
 
 .message.ai .message-content {
   background-color: #fff;
   border: 1px solid #e0e0e0;
+  color: #333;
 }
 
 .message.user .message-content {
@@ -923,6 +1086,13 @@ const handleLogout = () => {
 .message-avatar {
   font-size: 24px;
   flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+  border-radius: 50%;
 }
 
 .message-content {
@@ -933,26 +1103,106 @@ const handleLogout = () => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.chat-input-area {
-  padding: 20px 30px;
-  border-top: 1px solid #e0e0e0;
+/* 语音消息样式 */
+.message-voice {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  max-width: 200px;
+}
+
+.message-voice.user {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.message-voice.ai {
   background-color: #fff;
+  border: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.voice-play-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.voice-play-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.voice-play-button:hover .voice-icon {
+  transform: scale(1.1);
+}
+
+.voice-icon {
+  font-size: 18px;
+  transition: transform 0.2s;
+}
+
+.voice-duration {
+  font-size: 14px;
+  color: inherit;
+  opacity: 0.9;
+}
+
+/* AI消息特有操作区 */
+.ai-message-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: 52px;
+}
+
+.action-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #e0e0e0;
+  background-color: white;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background-color: #f8f9fa;
+  border-color: #4CAF50;
+}
+
+/* 聊天输入区域样式 */
+.chat-input-area {
+  padding: 20px;
+  background-color: white;
+  border-top: 1px solid #dee2e6;
 }
 
 .input-wrapper {
   display: flex;
   gap: 10px;
+  margin-bottom: 10px;
 }
 
 .input-wrapper textarea {
   flex: 1;
   padding: 12px 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  resize: none;
-  font-size: 16px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 14px;
   line-height: 1.5;
-  min-height: 60px;
+  resize: none;
+  min-height: 40px;
   max-height: 120px;
 }
 
@@ -961,61 +1211,50 @@ const handleLogout = () => {
   border-color: #4CAF50;
 }
 
+.voice-button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dee2e6;
+  background-color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s;
+}
+
+.voice-button:hover {
+  background-color: #f8f9fa;
+  border-color: #4CAF50;
+}
+
 .send-button {
-  padding: 12px 24px;
+  padding: 0 20px;
   background-color: #4CAF50;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 16px;
-  align-self: flex-end;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
 }
 
 .send-button:hover {
   background-color: #45a049;
 }
 
+.send-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
 .input-tip {
-  margin-top: 8px;
-  color: #999;
-  font-size: 12px;
-  text-align: right;
-}
-
-/* 选择对话提示 */
-.select-chat-tip {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #f9f9f9;
-}
-
-.tip-content {
   text-align: center;
-  color: #666;
-}
-
-.tip-content h3 {
-  margin-bottom: 10px;
-  color: #333;
-}
-/* 录音按钮样式 */
-.voice-button {
-  padding: 12px 16px;
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  align-self: flex-end;
-  transition: background-color 0.3s;
-}
-
-.voice-button:hover {
-  background-color: #1976D2;
+  font-size: 12px;
+  color: #999;
 }
 
 /* 模态框样式 */
@@ -1027,25 +1266,23 @@ const handleLogout = () => {
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   z-index: 1000;
 }
 
 .modal-content {
   background-color: white;
-  border-radius: 8px;
+  border-radius: 12px;
   width: 90%;
   max-width: 600px;
   max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow-y: auto;
 }
 
 .modal-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 20px;
+  border-bottom: 1px solid #dee2e6;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1053,340 +1290,234 @@ const handleLogout = () => {
 
 .modal-header h3 {
   margin: 0;
+  font-size: 18px;
   color: #333;
-  font-size: 20px;
 }
 
 .close-button {
-  background: none;
+  width: 32px;
+  height: 32px;
   border: none;
+  background: none;
   font-size: 24px;
-  color: #999;
   cursor: pointer;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
+  color: #666;
+  transition: color 0.2s;
 }
 
 .close-button:hover {
-  background-color: #f5f5f5;
-  color: #666;
+  color: #333;
 }
 
 .modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
+  padding: 20px;
 }
 
-.character-section {
-  margin-bottom: 24px;
-}
-
-.character-section h4 {
-  margin: 0 0 16px 0;
-  color: #333;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.character-list {
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #dee2e6;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
-.character-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border: 2px solid transparent;
+.cancel-button {
+  padding: 10px 20px;
+  border: 1px solid #dee2e6;
+  background-color: white;
   border-radius: 8px;
   cursor: pointer;
+  font-size: 14px;
   transition: all 0.2s;
+}
+
+.cancel-button:hover {
   background-color: #f8f9fa;
 }
 
-.character-item:hover {
-  background-color: #e9ecef;
-}
-
-.character-item.selected {
-  border-color: #4CAF50;
-  background-color: #f1f8e9;
-}
-
-.character-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: #e0e0e0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.character-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.character-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.character-name {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.character-desc {
-  font-size: 14px;
-  color: #666;
-  line-height: 1.4;
-}
-
-.custom-character-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.custom-character-button {
-  width: 100%;
-  padding: 12px 20px;
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  transition: background-color 0.3s;
-}
-
-.custom-character-button:hover {
-  background-color: #1976D2;
-}
-
-.custom-character-form {
-  margin-top: 20px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: #333;
-  font-size: 14px;
-}
-
-.form-group input[type="text"],
-.form-group textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: border-color 0.3s;
-}
-
-.form-group input[type="text"]:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #4CAF50;
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.form-group input[type="file"] {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background-color: white;
-}
-
-.avatar-upload-container {
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.avatar-preview {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  border: 2px dashed #ccc;
-  margin: 0 auto 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background-color: #f9f9f9;
-}
-
-.avatar-preview:hover {
-  border-color: #4CAF50;
-  background-color: #f0f8f0;
-}
-
-.preview-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.avatar-placeholder {
-  color: #999;
-  font-size: 14px;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.avatar-upload-text {
-  color: #4CAF50;
-  font-size: 14px;
-  cursor: pointer;
-  transition: color 0.3s;
-}
-
-.avatar-upload-text:hover {
-  color: #45a049;
-  text-decoration: underline;
-}
-
-.error-message {
-  color: #f44336;
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-/* 模态框底部按钮样式 */
-.modal-footer {
-  padding: 20px 24px;
-  border-top: 1px solid #e0e0e0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-/* 按钮样式 */
-.confirm-button,
-.cancel-button {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 500;
-  transition: all 0.3s;
+.confirm-button {
+  padding: 10px 20px;
   background-color: #4CAF50;
   color: white;
-}
-
-.cancel-button {
-  background-color: #f5f5f5;
-  color: #333;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
 }
 
 .confirm-button:hover {
   background-color: #45a049;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.2);
 }
 
-.cancel-button:hover {
-  background-color: #e0e0e0;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.confirm-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* 角色选择样式 */
+.character-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.character-item {
+  flex: 1;
+  min-width: 150px;
+  padding: 15px;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.character-item:hover {
+  border-color: #4CAF50;
+  background-color: #f8f9fa;
+}
+
+.character-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 10px;
+}
+
+.character-name {
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.character-description {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.character-item input[type="radio"] {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  transform: scale(1.2);
+}
+
+.custom-character-button {
+  width: 100%;
+  padding: 12px;
+  border: 2px dashed #dee2e6;
+  background-color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.custom-character-button:hover {
+  border-color: #4CAF50;
+  color: #4CAF50;
 }
 
 /* 录音模态框样式 */
 .recording-indicator {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin-bottom: 20px;
+  font-size: 16px;
+  color: #333;
 }
 
 .recording-dot {
-  display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
   background-color: #f44336;
+  border-radius: 50%;
   animation: pulse 1.5s infinite;
-  margin-right: 8px;
 }
 
 @keyframes pulse {
   0% {
-    transform: scale(1);
+    transform: scale(0.8);
     opacity: 1;
   }
   50% {
     transform: scale(1.2);
-    opacity: 0.7;
+    opacity: 0.8;
   }
   100% {
-    transform: scale(1);
+    transform: scale(0.8);
     opacity: 1;
   }
 }
 
 .recording-duration {
-  font-size: 16px;
-  color: #666;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  color: #333;
 }
 
-#waveform {
-  margin: 20px 0;
-  height: 80px;
+.recording-visualizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  margin-bottom: 20px;
+}
+
+.visualizer-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 100%;
+}
+
+.bar {
+  width: 8px;
+  background-color: #4CAF50;
+  border-radius: 4px;
+  animation: sound-wave 1s infinite ease-in-out;
+}
+
+.bar:nth-child(1) { animation-delay: 0s; }
+.bar:nth-child(2) { animation-delay: 0.1s; }
+.bar:nth-child(3) { animation-delay: 0.2s; }
+.bar:nth-child(4) { animation-delay: 0.3s; }
+.bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes sound-wave {
+  0%, 100% { height: 20%; }
+  50% { height: 100%; }
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .modal-content {
-    width: 95%;
-    margin: 20px;
+  .sidebar {
+    display: none;
   }
   
-  .character-avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 16px;
+  .message {
+    max-width: 85%;
   }
   
-  .voice-button {
-    padding: 10px 12px;
-    font-size: 14px;
+  .chat-header,
+  .chat-input-area {
+    padding: 15px;
   }
   
-  .send-button {
-    padding: 10px 16px;
-    font-size: 14px;
+  .chat-messages {
+    padding: 15px;
   }
 }
 </style>

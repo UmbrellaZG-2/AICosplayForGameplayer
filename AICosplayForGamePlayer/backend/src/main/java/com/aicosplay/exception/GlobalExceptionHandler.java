@@ -7,6 +7,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.aicosplay.constant.ErrorCode;
+import com.aicosplay.exception.BusinessException;
+import com.aicosplay.exception.EmailAlreadyExistsException;
+import com.aicosplay.exception.ServiceException;
+import com.aicosplay.exception.UnauthorizedException;
+import com.aicosplay.exception.UserNotFoundException;
+import com.aicosplay.exception.UsernameAlreadyExistsException;
 import com.aicosplay.model.ApiResponse;
 
 import java.time.LocalDateTime;
@@ -25,7 +32,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<?>> handleBusinessException(BusinessException ex, WebRequest request) {
         return new ResponseEntity<>(
-                ApiResponse.error(HttpStatus.BAD_REQUEST.value(), ex.getErrorMessage()),
+                ApiResponse.error(ErrorCode.PARAM_VALIDATION_ERROR, ex.getErrorMessage()),
                 HttpStatus.BAD_REQUEST
         );
     }
@@ -33,10 +40,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * 处理服务层异常
      */
-    @ExceptionHandler(ServiceException.class) // 包括EmailAlreadyExistsException, UsernameAlreadyExistsException等子类
+    @ExceptionHandler(ServiceException.class)
     public ResponseEntity<ApiResponse<?>> handleServiceException(ServiceException ex, WebRequest request) {
+        // 根据具体的异常类型返回对应的错误代码
+        if (ex instanceof UsernameAlreadyExistsException) {
+            return new ResponseEntity<>(
+                    ApiResponse.error(ErrorCode.USERNAME_ALREADY_EXISTS),
+                    HttpStatus.BAD_REQUEST
+            );
+        } else if (ex instanceof EmailAlreadyExistsException) {
+            return new ResponseEntity<>(
+                    ApiResponse.error(ErrorCode.EMAIL_ALREADY_EXISTS),
+                    HttpStatus.BAD_REQUEST
+            );
+        } else if (ex instanceof UserNotFoundException) {
+            return new ResponseEntity<>(
+                    ApiResponse.error(ErrorCode.USER_NOT_FOUND),
+                    HttpStatus.NOT_FOUND
+            );
+        }
+        
+        // 通用服务异常
         return new ResponseEntity<>(
-                ApiResponse.error(HttpStatus.BAD_REQUEST.value(), ex.getMessage()),
+                ApiResponse.error(ErrorCode.SYSTEM_ERROR, ex.getMessage()),
                 HttpStatus.BAD_REQUEST
         );
     }
@@ -47,7 +73,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponse<?>> handleSecurityException(SecurityException ex, WebRequest request) {
         return new ResponseEntity<>(
-                ApiResponse.forbidden(),
+                ApiResponse.error(ErrorCode.PERMISSION_DENIED),
                 HttpStatus.FORBIDDEN
         );
     }
@@ -58,7 +84,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiResponse<?>> handleUnauthorizedException(UnauthorizedException ex, WebRequest request) {
         return new ResponseEntity<>(
-                ApiResponse.unauthorized(),
+                ApiResponse.error(ErrorCode.AUTHENTICATION_FAILED),
                 HttpStatus.UNAUTHORIZED
         );
     }
@@ -72,7 +98,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ex.printStackTrace();
 
         return new ResponseEntity<>(
-                ApiResponse.internalError("服务器内部错误，请稍后再试"),
+                ApiResponse.error(ErrorCode.SYSTEM_ERROR),
                 HttpStatus.INTERNAL_SERVER_ERROR
         );
     }

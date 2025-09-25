@@ -8,7 +8,12 @@ import com.aicosplay.exception.BusinessException;
 import com.aicosplay.repository.ConversationRepository;
 import com.aicosplay.repository.MessageRepository;
 import com.aicosplay.repository.GameCharacterRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -16,6 +21,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ConversationService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(ConversationService.class);
 
     @Autowired
     private ConversationRepository conversationRepository;
@@ -54,12 +61,24 @@ public class ConversationService {
         return conversationRepository.save(conversation);
     }
 
+    /**
+     * 获取用户的所有未删除对话
+     * 使用缓存提高性能
+     */
+    @Cacheable(value = "conversations", key = "#user.id")
     public List<Conversation> getUserConversations(User user) {
+        logger.debug("Fetching conversations for user: {}", user.getId());
         // 获取未删除的对话
-        return conversationRepository.findByUserAndIsDeletedOrderByUpdatedAtDesc(user, 0);
+        return conversationRepository.findByUserAndIsDeletedOrderByUpdatedAtDesc(user, (byte) 0);
     }
 
+    /**
+     * 根据ID获取对话详情
+     * 使用缓存提高性能
+     */
+    @Cacheable(value = "conversationDetail", key = "#id")
     public Conversation getConversationById(Long id) {
+        logger.debug("Fetching conversation by id: {}", id);
         Conversation conversation = conversationRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
                 
@@ -70,15 +89,44 @@ public class ConversationService {
                 
         return conversation;
     }
-
-    @Transactional
-    public Message addMessageToConversation(Long conversationId, String content, User sender) {
-        Conversation conversation = conversationRepository.findById(conversationId)
+    
+    /**
+     * 根据ID获取对话详情并验证用户权限
+     * 使用缓存提高性能
+     */
+    @Cacheable(value = "conversationDetail", key = "#id")
+    public Conversation getConversationById(Long id, User user) {
+        logger.debug("Fetching conversation by id: {} for user: {}", id, user.getId());
+        Conversation conversation = conversationRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
+                
+        // 验证对话是否属于当前用户
+        if (!conversation.getUser().getId().equals(user.getId())) {
+            logger.warn("Unauthorized access attempt to conversation: {} by user: {}", id, user.getId());
+            throw new BusinessException("FORBIDDEN", "您没有权限访问此对话");
+        }
+                
+        // 检查对话是否已删除
+        if (conversation.getIsDeleted() == (byte) 1) {
+            throw new BusinessException("CONVERSATION_DELETED", "Conversation has been deleted");
+        }
+                
+        return conversation;
+    }
+
+    /**
+     * 向对话添加消息并获取AI回复
+     * 清理相关缓存以确保数据一致性
+     */
+    @Transactional
+    @CacheEvict(value = {"conversations", "conversationDetail", "messages"}, allEntries = true)
+    public Message addMessageToConversation(Long conversationId, String content, User sender) {
+        logger.debug("Adding message to conversation: {} for user: {}", conversationId, sender.getId());
         
-        // 检查用户是否有权限访问此对话
-        if (!conversation.getUser().getId().equals(sender.getId())) {
-            throw new BusinessException("UNAUTHORIZED_ACCESS", "Unauthorized access to conversation");
+        // 使用优化的查询方法获取对话
+        Conversation conversation = conversationRepository.findByIdAndUserWithMessages(conversationId, sender);
+        if (conversation == null) {
+            throw new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found or unauthorized access");
         }
         
         // 检查对话是否已删除
@@ -94,8 +142,10 @@ public class ConversationService {
         userMessage.setCreatedAt(java.time.LocalDateTime.now());
         messageRepository.save(userMessage);
         
-        // 构建对话上下文（最近10条消息）
-        List<Message> recentMessages = messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId);
+        // 构建对话上下文（使用分页查询优化性能）
+        // 只获取最近10条消息，避免加载过多数据
+        List<Message> recentMessages = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(
+                conversationId, PageRequest.of(0, 10));
         String context = buildConversationContext(recentMessages, conversation.getCharacterName());
         
         try {
@@ -104,7 +154,10 @@ public class ConversationService {
                     .orElseThrow(() -> new BusinessException("CHARACTER_NOT_FOUND", "Character not found"));
             
             // 判断是否是首次对话
-            boolean isFirstMessage = recentMessages.size() <= 1; // 只有当前用户消息
+            boolean isFirstMessage = messageRepository.countByConversationId(conversationId) <= 1;
+            
+            logger.debug("Generating AI response for conversation: {}, isFirstMessage: {}", 
+                        conversationId, isFirstMessage);
             
             // 调用AI服务生成回复，传入角色设定、用户信息和首次对话标志
             String aiResponse = aiService.generateResponseWithContext(
@@ -123,6 +176,7 @@ public class ConversationService {
             aiMessage.setCreatedAt(java.time.LocalDateTime.now());
             messageRepository.save(aiMessage);
         } catch (SecurityException e) {
+            logger.warn("Security check failed for message in conversation: {}", conversationId);
             // 处理安全检查失败的情况
             Message safetyMessage = new Message();
             safetyMessage.setConversation(conversation);
@@ -130,8 +184,12 @@ public class ConversationService {
             safetyMessage.setSenderType((byte) 2); // 2表示AI
             safetyMessage.setCreatedAt(java.time.LocalDateTime.now());
             messageRepository.save(safetyMessage);
+        } catch (Exception e) {
+            logger.error("Error processing message in conversation: {}", conversationId, e);
+            throw new BusinessException("MESSAGE_PROCESSING_ERROR", "Failed to process message: " + e.getMessage());
         }
         
+        logger.debug("Message added successfully to conversation: {}", conversationId);
         // 返回用户消息
         return userMessage;
     }
@@ -158,29 +216,71 @@ public class ConversationService {
         return messageRepository.findByConversationOrderByCreatedAtAsc(conversation);
     }
 
+    /**
+     * 逻辑删除对话并清理相关缓存
+     */
     @Transactional
-    public void deleteConversation(Long id) {
-        // 软删除对话
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
-                
-        conversation.setIsDeleted((byte) 1);
-        conversationRepository.save(conversation);
+    @CacheEvict(value = {"conversations", "conversationDetail", "messages"}, allEntries = true)
+    public void deleteConversation(Long id, User user) {
+        logger.debug("Deleting conversation: {} for user: {}", id, user.getId());
+        
+        // 使用优化的查询方法获取对话
+        Conversation conversation = conversationRepository.findByIdAndUserWithMessages(id, user);
+        if (conversation == null) {
+            throw new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found or unauthorized access");
+        }
+        
+        // 检查对话是否已删除
+        if (conversation.getIsDeleted() == (byte) 1) {
+            logger.debug("Conversation already deleted: {}", id);
+            return; // 已删除，无需重复操作
+        }
+        
+        try {
+            // 逻辑删除，将is_deleted设置为1
+            conversation.setIsDeleted((byte) 1);
+            conversationRepository.save(conversation);
+            logger.debug("Conversation deleted successfully: {}", id);
+        } catch (Exception e) {
+            logger.error("Error deleting conversation: {}", id, e);
+            throw new BusinessException("CONVERSATION_DELETION_FAILED", "Failed to delete conversation: " + e.getMessage());
+        }
     }
 
-    // 恢复已删除的对话
+    /**
+     * 恢复已删除的对话并清理相关缓存
+     */
     @Transactional
-    public void restoreConversation(Long id) {
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
-                
-        conversation.setIsDeleted((byte) 0);
-        conversationRepository.save(conversation);
+    @CacheEvict(value = {"conversations", "conversationDetail", "messages"}, allEntries = true)
+    public void restoreConversation(Long id, User user) {
+        logger.debug("Restoring conversation: {} for user: {}", id, user.getId());
+        
+        // 使用优化的查询方法获取对话
+        Conversation conversation = conversationRepository.findByIdAndUserWithMessages(id, user);
+        if (conversation == null) {
+            throw new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found or unauthorized access");
+        }
+        
+        // 检查对话是否已恢复
+        if (conversation.getIsDeleted() == (byte) 0) {
+            logger.debug("Conversation already restored: {}", id);
+            return; // 已恢复，无需重复操作
+        }
+        
+        try {
+            // 恢复对话，将is_deleted设置为0
+            conversation.setIsDeleted((byte) 0);
+            conversationRepository.save(conversation);
+            logger.debug("Conversation restored successfully: {}", id);
+        } catch (Exception e) {
+            logger.error("Error restoring conversation: {}", id, e);
+            throw new BusinessException("CONVERSATION_RESTORE_FAILED", "Failed to restore conversation: " + e.getMessage());
+        }
     }
 
     // 获取已删除的对话
     public List<Conversation> getDeletedConversations(User user) {
-        return conversationRepository.findByUserAndIsDeletedOrderByUpdatedAtDesc(user, 1);
+        return conversationRepository.findByUserAndIsDeletedOrderByUpdatedAtDesc(user, (byte) 1);
     }
     
     /**
@@ -188,14 +288,21 @@ public class ConversationService {
      * @param messageId 消息ID
      * @param user 当前登录用户
      */
+    /**
+     * 删除消息并清理相关缓存
+     */
     @Transactional
+    @CacheEvict(value = {"conversations", "conversationDetail", "messages"}, allEntries = true)
     public void deleteMessage(Long messageId, User user) {
+        logger.debug("Deleting message: {} for user: {}", messageId, user.getId());
+        
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new BusinessException("MESSAGE_NOT_FOUND", "Message not found"));
         
         // 检查消息所属的对话是否属于当前用户
         Conversation conversation = message.getConversation();
         if (!conversation.getUser().getId().equals(user.getId())) {
+            logger.warn("Unauthorized attempt to delete message: {} by user: {}", messageId, user.getId());
             throw new BusinessException("UNAUTHORIZED_ACCESS", "Unauthorized access to delete message");
         }
         
@@ -204,6 +311,12 @@ public class ConversationService {
             throw new BusinessException("CONVERSATION_DELETED", "Cannot delete message from deleted conversation");
         }
         
-        messageRepository.delete(message);
+        try {
+            messageRepository.delete(message);
+            logger.debug("Message deleted successfully: {}", messageId);
+        } catch (Exception e) {
+            logger.error("Error deleting message: {}", messageId, e);
+            throw new BusinessException("MESSAGE_DELETION_FAILED", "Failed to delete message: " + e.getMessage());
+        }
     }
 }

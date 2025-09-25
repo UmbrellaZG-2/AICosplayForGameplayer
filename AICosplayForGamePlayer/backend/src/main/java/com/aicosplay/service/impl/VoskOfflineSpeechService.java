@@ -30,7 +30,7 @@ public class VoskOfflineSpeechService implements SpeechRecognitionService {
     private static final Logger logger = Logger.getLogger(VoskOfflineSpeechService.class.getName());
 
     // Vosk模型路径
-    @Value("${vosk.model.path:e:/code/AI/AICosplayForGameplayer/vosk-model-small-cn-0.22}")
+    @Value("${vosk.model.path:../../vosk-model-small-cn-0.22/}")
     private String modelPath;
 
     // 采样率

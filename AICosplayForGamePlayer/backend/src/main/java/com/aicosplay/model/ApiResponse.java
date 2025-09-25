@@ -1,15 +1,10 @@
 package com.aicosplay.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.aicosplay.constant.ErrorCode;
 
 /**
  * 通用API响应类，用于统一所有接口的响应格式
  */
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
 public class ApiResponse<T> {
     
     /**
@@ -33,6 +28,71 @@ public class ApiResponse<T> {
      */
     private T data;
     
+    /**
+     * 无参构造函数
+     */
+    public ApiResponse() {
+    }
+    
+    /**
+     * 全参构造函数
+     * @param code 响应状态码
+     * @param message 响应消息
+     * @param data 响应数据
+     */
+    public ApiResponse(int code, String message, T data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
+    }
+    
+    /**
+     * 获取响应状态码
+     * @return 状态码
+     */
+    public int getCode() {
+        return code;
+    }
+    
+    /**
+     * 设置响应状态码
+     * @param code 状态码
+     */
+    public void setCode(int code) {
+        this.code = code;
+    }
+    
+    /**
+     * 获取响应消息
+     * @return 消息
+     */
+    public String getMessage() {
+        return message;
+    }
+    
+    /**
+     * 设置响应消息
+     * @param message 消息
+     */
+    public void setMessage(String message) {
+        this.message = message;
+    }
+    
+    /**
+     * 获取响应数据
+     * @return 数据
+     */
+    public T getData() {
+        return data;
+    }
+    
+    /**
+     * 设置响应数据
+     * @param data 数据
+     */
+    public void setData(T data) {
+        this.data = data;
+    }
     /**
      * 创建成功响应
      * @param data 响应数据
@@ -58,6 +118,25 @@ public class ApiResponse<T> {
      */
     public static <T> ApiResponse<T> error(int code, String message) {
         return new ApiResponse<>(code, message, null);
+    }
+    
+    /**
+     * 使用ErrorCode枚举创建错误响应
+     * @param errorCode 错误代码枚举
+     * @return ApiResponse实例
+     */
+    public static <T> ApiResponse<T> error(ErrorCode errorCode) {
+        return new ApiResponse<>(errorCode.getCode(), errorCode.getMessage(), null);
+    }
+    
+    /**
+     * 使用ErrorCode枚举创建错误响应（带自定义消息）
+     * @param errorCode 错误代码枚举
+     * @param customMessage 自定义错误消息
+     * @return ApiResponse实例
+     */
+    public static <T> ApiResponse<T> error(ErrorCode errorCode, String customMessage) {
+        return new ApiResponse<>(errorCode.getCode(), customMessage, null);
     }
     
     /**

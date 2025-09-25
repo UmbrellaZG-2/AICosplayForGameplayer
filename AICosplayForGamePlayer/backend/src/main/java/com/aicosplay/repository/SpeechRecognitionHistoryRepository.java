@@ -28,7 +28,7 @@ public interface SpeechRecognitionHistoryRepository extends JpaRepository<Speech
     /**
      * 查询指定用户的最新N条语音识别历史记录
      */
-    List<SpeechRecognitionHistory> findTopNByUserIdOrderByCreatedAtDesc(String userId, int limit);
+    List<SpeechRecognitionHistory> findTop100ByUserIdOrderByCreatedAtDesc(String userId, org.springframework.data.domain.Pageable pageable);
 
     /**
      * 统计用户的语音识别成功次数
