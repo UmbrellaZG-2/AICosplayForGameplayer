@@ -108,6 +108,7 @@ export const authAPI = {
 
 // 对话相关API
 export const conversationAPI = {
+  // 创建新对话
   create: (title, characterId = null) => {
     // 确保向后兼容：如果只传递一个参数且不是字符串，则可能是旧版调用方式
     if (typeof title === 'object' && arguments.length === 1) {
@@ -117,22 +118,27 @@ export const conversationAPI = {
     console.log('conversationAPI.create - 调用方式(新版):', { title, characterId })
     return api.post('/api/conversations', { title, characterId });
   },
+  // 获取用户的所有对话
   getAll: () => {
     console.log('conversationAPI.getAll - 调用')
     return api.get('/api/conversations')
   },
+  // 获取单个对话
   getById: (id) => {
     console.log('conversationAPI.getById - 调用:', id)
     return api.get(`/api/conversations/${id}`)
   },
+  // 删除对话
   delete: (id) => {
     console.log('conversationAPI.delete - 调用:', id)
     return api.delete(`/api/conversations/${id}`)
   },
+  // 获取对话中的所有消息
   getMessages: (id) => {
     console.log('conversationAPI.getMessages - 调用:', id)
     return api.get(`/api/conversations/${id}/messages`)
   },
+  // 添加消息到对话
   addMessage: (id, message) => {
     console.log('conversationAPI.addMessage - 调用开始:', id, message)
     const startTime = Date.now()
@@ -149,13 +155,38 @@ export const conversationAPI = {
         // 重新抛出错误，确保调用者能够捕获到
         throw error
       })
+  },
+  // 删除单条消息
+  deleteMessage: (messageId) => {
+    console.log('conversationAPI.deleteMessage - 调用:', messageId)
+    return api.delete(`/api/conversations/messages/${messageId}`)
+  },
+  // 恢复已删除的对话
+  restoreConversation: (id) => {
+    console.log('conversationAPI.restoreConversation - 调用:', id)
+    return api.put(`/api/conversations/${id}/restore`)
+  },
+  // 获取已删除的对话列表
+  getDeletedConversations: () => {
+    console.log('conversationAPI.getDeletedConversations - 调用')
+    return api.get('/api/conversations/deleted')
   }
 }
 
 // 游戏角色相关API
 export const gameCharacterAPI = {
+  // 获取所有角色
   getAll: () => api.get('/api/characters'),
-  create: (characterData) => api.post('/api/characters', characterData)
+  // 创建新角色
+  create: (characterData) => api.post('/api/characters', characterData),
+  // 获取角色详情
+  getById: (id) => api.get(`/api/characters/${id}`),
+  // 更新角色信息
+  update: (id, characterData) => api.put(`/api/characters/${id}`, characterData),
+  // 删除角色
+  delete: (id) => api.delete(`/api/characters/${id}`),
+  // 搜索角色
+  search: (keyword) => api.get(`/api/characters/search?q=${keyword}`)
 }
 
 // 语音识别相关API
@@ -182,6 +213,18 @@ export const speechAPI = {
     responseType: 'arraybuffer',
     timeout: 30000
   })
+}
+
+// 用户角色关联相关API
+export const userCharacterAPI = {
+  // 添加角色到用户
+  addCharacter: (characterId) => api.post('/api/user-characters', { characterId }),
+  // 获取用户拥有的所有角色
+  getUserCharacters: () => api.get('/api/user-characters'),
+  // 从用户移除角色
+  removeCharacter: (characterId) => api.delete(`/api/user-characters/${characterId}`),
+  // 检查用户是否拥有某个角色
+  checkCharacter: (characterId) => api.get(`/api/user-characters/check/${characterId}`)
 }
 
 // 用户相关API，与authAPI功能重叠，保留以兼容现有代码

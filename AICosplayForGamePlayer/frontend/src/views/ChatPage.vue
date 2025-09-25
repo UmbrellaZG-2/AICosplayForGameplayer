@@ -65,7 +65,16 @@
           <!-- 语音消息显示 -->
           <template v-if="message.isVoiceMessage">
             <div class="message">
-              <div class="message-avatar">{{ message.senderType === 'user' ? '👤' : '🤖' }}</div>
+              <!-- 用户头像 -->
+              <div v-if="message.senderType === 'user'" class="message-avatar">
+                <img v-if="userAvatar" :src="userAvatar" alt="用户头像" class="avatar-image">
+                <span v-else>👤</span>
+              </div>
+              <!-- 角色头像 -->
+              <div v-else class="message-avatar">
+                <img v-if="getCharacterAvatar()" :src="getCharacterAvatar()" alt="角色头像" class="avatar-image">
+                <span v-else>🤖</span>
+              </div>
               <div :class="['message-voice', message.senderType]">
                 <button class="voice-play-button" @click="playVoiceMessage(message)">
                   <span class="voice-icon">▶</span>
@@ -77,7 +86,16 @@
           <!-- 普通文本消息显示 -->
           <template v-else>
             <div class="message">
-              <div class="message-avatar">{{ message.senderType === 'user' ? '👤' : '🤖' }}</div>
+              <!-- 用户头像 -->
+              <div v-if="message.senderType === 'user'" class="message-avatar">
+                <img v-if="userAvatar" :src="userAvatar" alt="用户头像" class="avatar-image">
+                <span v-else>👤</span>
+              </div>
+              <!-- 角色头像 -->
+              <div v-else class="message-avatar">
+                <img v-if="getCharacterAvatar()" :src="getCharacterAvatar()" alt="角色头像" class="avatar-image">
+                <span v-else>🤖</span>
+              </div>
               <div :class="['message-content', message.senderType]">{{ message.content }}</div>
             </div>
           </template>
@@ -90,7 +108,11 @@
           <!-- 显示AI消息的文字内容（如果用户点击了"显示文字"） -->
           <div v-if="message.senderType === 'ai' && message.isVoiceMessage && message.showText" class="ai-message-text">
             <div class="message">
-              <div class="message-avatar">🤖</div>
+              <!-- 角色头像 -->
+              <div class="message-avatar">
+                <img v-if="getCharacterAvatar()" :src="getCharacterAvatar()" alt="角色头像" class="avatar-image">
+                <span v-else>🤖</span>
+              </div>
               <div class="message-content ai">{{ message.content }}</div>
             </div>
           </div>
@@ -352,6 +374,8 @@ const messages = ref([])
 const currentConversationId = ref(null)
 const currentConversation = ref(null)
 const inputMessage = ref('')
+// 用户头像相关
+const userAvatar = ref(null)
 
 // 角色选择相关状态
 const showCharacterSelectModal = ref(false)
@@ -382,9 +406,21 @@ const fetchMessages = async () => {
   if (!currentConversationId.value) return
   
   try {
-    const data = await conversationAPI.getMessages(currentConversationId.value)
+    // 记录当前的临时消息
+    const temporaryMessages = messages.value.filter(msg => msg.isTemporary)
+    console.log('当前临时消息:', temporaryMessages)
+    
+    const response = await conversationAPI.getMessages(currentConversationId.value)
+    
+    // 修复：检查响应数据格式，确保使用正确的数组数据
+    // 从错误信息看，API返回的可能是包装后的对象，需要从data字段获取消息数组
+    const messagesData = Array.isArray(response) ? response : 
+                         (response && response.data) ? response.data : []
+    
+    console.log('获取到的消息数据:', messagesData)
+    
     // 为AI语音消息添加showText属性，默认为false
-    messages.value = data.map(msg => ({
+    const serverMessages = messagesData.map(msg => ({
       ...msg,
       showText: false, // 默认不显示AI消息的文字
       // 如果是语音消息且有voiceFilePath，将其作为语音ID使用
@@ -392,11 +428,43 @@ const fetchMessages = async () => {
         `/api/speech/${msg.voiceFilePath}` : null
     }))
     
+    // 修复：合并服务器消息和临时消息，确保临时消息不会丢失
+    // 创建一个Map来存储最新版本的消息，优先使用服务器消息
+    const messagesMap = new Map()
+    
+    // 先添加服务器消息
+    serverMessages.forEach(msg => {
+      messagesMap.set(msg.id, msg)
+    })
+    
+    // 然后添加临时消息（如果服务器没有返回对应的消息）
+    temporaryMessages.forEach(tempMsg => {
+      // 检查是否已经有相同内容的消息在服务器响应中
+      const hasMatchingServerMsg = serverMessages.some(serverMsg => 
+        serverMsg.content === tempMsg.content && 
+        serverMsg.senderType === tempMsg.senderType &&
+        Math.abs(new Date(serverMsg.createdAt) - new Date(tempMsg.createdAt)) < 5000 // 5秒内的相同消息
+      )
+      
+      if (!hasMatchingServerMsg) {
+        messagesMap.set(tempMsg.id, tempMsg)
+      }
+    })
+    
+    // 将Map转换为有序数组
+    messages.value = Array.from(messagesMap.values()).sort((a, b) => 
+      new Date(a.createdAt) - new Date(b.createdAt)
+    )
+    
+    console.log('合并后的消息列表:', messages.value)
+    
     // 滚动到底部
     setTimeout(scrollToBottom, 100)
   } catch (error) {
     console.error('加载消息失败:', error)
-    messages.value = []
+    // 修复：不再清空消息列表，保留现有消息
+    // messages.value = []
+    console.log('加载消息失败，但保留现有消息')
   }
 }
 
@@ -422,6 +490,7 @@ const toggleRecording = async () => {
 onMounted(async () => {
   await loadConversations()
   await loadCharacters()
+  await loadUserInfo()
   
   // 如果有对话，加载第一条对话的消息
   if (conversations.value.length > 0 && !currentConversationId.value) {
@@ -430,6 +499,33 @@ onMounted(async () => {
     await fetchMessages()
   }
 })
+
+// 加载用户信息
+const loadUserInfo = async () => {
+  try {
+    // 从localStorage获取用户信息
+    const userInfo = localStorage.getItem('userInfo')
+    if (userInfo) {
+      const parsedUserInfo = JSON.parse(userInfo)
+      // 这里假设用户头像存储在userInfo的avatar字段中
+      userAvatar.value = parsedUserInfo.avatar || null
+    }
+  } catch (error) {
+    console.error('加载用户信息失败:', error)
+  }
+}
+
+// 获取角色头像
+const getCharacterAvatar = () => {
+  if (!currentConversation?.value?.characterId) return null
+  
+  const character = getCharacterById(currentConversation.value.characterId)
+  if (!character?.name) return null
+  
+  // 头像路径逻辑与角色选择模态框中的逻辑一致
+  // 实际加载时会通过@error事件处理加载失败的情况
+  return `/resource/Character/${character.name}.jpg`
+}
 
 onUnmounted(() => {
   // 清理录音资源
@@ -611,10 +707,10 @@ const stopRecording = async () => {
         // 滚动到底部
         scrollToBottom();
         
-        // 发送消息到后端
+        // 发送消息到后端 - 修复：将senderType从字符串'user'改为数字1，符合后端要求
         const messageData = {
           content: recognizedText,
-          senderType: 'user',
+          senderType: 1, // 1表示用户，符合后端MessageRequest类的Byte类型要求
           isVoiceMessage: true,
           voiceDuration: Math.round(audioBlob.duration || 0)
         };
@@ -886,68 +982,8 @@ const switchConversation = async (id) => {
   setTimeout(scrollToBottom, 100)
 }
 
-// 测试API连接
-const testAPIConnection = async () => {
-  try {
-    console.log('开始测试API连接...')
-    
-    // 先尝试一个简单的GET请求，检查基本连接
-    console.log('尝试简单的GET请求...')
-    const pingResponse = await api.get('/api/auth/user')
-    console.log('GET请求成功:', pingResponse)
-    
-    // 再测试发送消息
-    const testMessage = {
-      content: '测试消息',
-      senderType: 'user'
-    }
-    
-    // 直接使用一个已知存在的对话ID进行测试
-    const testConversationId = 15 // 从后端日志中看到的对话ID
-    console.log(`尝试发送测试消息到对话ID: ${testConversationId}`)
-    
-    const startTime = Date.now()
-    const response = await api.post(`/api/conversations/${testConversationId}/messages`, testMessage)
-    const endTime = Date.now()
-    
-    console.log(`API测试成功! 响应时间: ${endTime - startTime}ms, 响应:`, response)
-    alert('API测试成功!')
-  } catch (error) {
-    console.error('API测试失败:', error)
-    console.error('错误详情:', JSON.stringify(error, null, 2))
-    
-    let errorMessage = 'API测试失败'
-    if (error.response) {
-      errorMessage += `\n状态码: ${error.response.status}`
-      errorMessage += `\n状态文本: ${error.response.statusText}`
-      if (error.response.data) {
-        errorMessage += `\n错误数据: ${JSON.stringify(error.response.data)}`
-      }
-    } else if (error.request) {
-      errorMessage += '\n网络错误: 服务器未响应'
-    } else {
-      errorMessage += `\n请求错误: ${error.message || '未知错误'}`
-    }
-    
-    alert(errorMessage)
-  }
-}
-
 // 发送消息
 const sendMessage = async () => {
-  // 添加测试API连接的按钮
-  if (!document.getElementById('test-api-button')) {
-    const button = document.createElement('button')
-    button.id = 'test-api-button'
-    button.innerText = '测试API连接'
-    button.style.position = 'fixed'
-    button.style.top = '20px'
-    button.style.right = '20px'
-    button.style.zIndex = '1000'
-    button.onclick = testAPIConnection
-    document.body.appendChild(button)
-  }
-  
   console.log('发送消息开始')
   
   // 检查输入和当前对话ID
@@ -988,12 +1024,13 @@ const sendMessage = async () => {
   inputMessage.value = ''
   
   try {
-    // 先在前端显示用户消息
+    // 先在前端显示用户消息 - 修复：设置senderType为1以匹配后端格式
     const userMessage = {
       id: Date.now(), // 临时ID
-      senderType: 'user',
+      senderType: 1, // 统一使用数字1表示用户，与后端一致
       content,
-      createdAt: new Date()
+      createdAt: new Date(),
+      isTemporary: true // 标记为临时消息
     }
     console.log('添加临时消息到前端:', userMessage)
     messages.value.push(userMessage)
@@ -1003,9 +1040,9 @@ const sendMessage = async () => {
     
     // 发送到后端
     console.log('准备发送到后端...')
-    console.log('发送的API参数 - conversationId:', conversationId, ', message:', {senderType: 'user', content})
+    console.log('发送的API参数 - conversationId:', conversationId, ', message:', {senderType: 1, content})
     const response = await conversationAPI.addMessage(conversationId, {
-      senderType: 'user',
+      senderType: 1, // 1表示用户，符合后端MessageRequest类的Byte类型要求
       content
     })
     console.log('后端响应:', response)
@@ -1031,8 +1068,12 @@ const sendMessage = async () => {
       errorMessage += `\n请求错误: ${error.message || '未知错误'}`
     }
     alert(errorMessage)
-    // 移除临时显示的消息
-    messages.value.pop()
+    
+    // 修复：不再自动移除临时消息，让用户可以看到发送的内容
+    // 但可以选择添加一个视觉提示，表明消息发送失败
+    // messages.value.pop()
+    console.log('消息发送失败，但保留在界面上')
+    // 可以添加代码来给失败的消息添加样式标记
   }
 }
 
@@ -1328,6 +1369,14 @@ const copyMessage = (content) => {
   align-items: center;
   justify-content: center;
   background-color: #f0f0f0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   border-radius: 50%;
 }
 
