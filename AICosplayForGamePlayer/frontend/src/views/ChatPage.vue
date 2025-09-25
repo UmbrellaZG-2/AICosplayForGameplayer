@@ -359,9 +359,9 @@ const fetchMessages = async () => {
     messages.value = data.map(msg => ({
       ...msg,
       showText: false, // 默认不显示AI消息的文字
-      // 如果是语音消息且有voiceFilePath，添加voiceUrl属性
+      // 如果是语音消息且有voiceFilePath，将其作为语音ID使用
       voiceUrl: msg.isVoiceMessage && msg.voiceFilePath ? 
-        `/audio/${new URL(msg.voiceFilePath, window.location.origin).pathname.split('/').pop()}` : null
+        `/api/speech/${msg.voiceFilePath}` : null
     }))
     
     // 滚动到底部
@@ -610,17 +610,36 @@ const stopRecording = async () => {
     // 播放语音消息
 const playVoiceMessage = async (message) => {
   try {
-    // 如果消息有voiceUrl，直接播放
-    if (message.voiceUrl) {
-      const audio = new Audio(message.voiceUrl);
+    // 如果消息有voiceFilePath（语音ID），使用语音API获取音频数据
+    if (message.isVoiceMessage && message.voiceFilePath) {
+      // 显示加载状态
+      loading.value = true;
+      
+      // 使用新的getSpeechData方法获取音频数据
+      const response = await speechAPI.getSpeechData(message.voiceFilePath);
+      
+      // 创建Blob对象
+      const audioBlob = new Blob([response], { type: 'audio/wav' });
+      
+      // 创建音频URL并播放
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
       await audio.play();
+      
+      // 播放结束后释放URL对象
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+      };
     } else {
-      console.error('播放语音失败: 未找到语音URL');
-      ElMessage.error('播放语音失败: 未找到语音文件');
+      console.error('播放语音失败: 未找到语音ID');
+      ElMessage.error('播放语音失败: 未找到语音数据');
     }
   } catch (error) {
     console.error('播放语音失败:', error);
     ElMessage.error('播放语音失败');
+  } finally {
+    // 隐藏加载状态
+    loading.value = false;
   }
 };
     
@@ -866,30 +885,6 @@ const copyMessage = (content) => {
       console.error('复制失败:', err)
       alert('复制失败，请手动复制')
     })
-}
-
-// 将文本转换为语音
-const convertTextToVoice = async (message) => {
-  try {
-    // 调用文本转语音API
-    const response = await speechAPI.textToSpeech({
-      text: message.content,
-      characterName: currentConversation?.characterName || ''
-    })
-    
-    if (response && response.success) {
-      // 更新消息状态
-      message.hasConvertedToVoice = true
-      
-      // 显示成功提示
-      alert('文本已成功转换为语音')
-    } else {
-      throw new Error('转换失败')
-    }
-  } catch (error) {
-    console.error('文本转语音失败:', error)
-    alert('文本转语音失败，请重试')
-  }
 }
 </script>
 

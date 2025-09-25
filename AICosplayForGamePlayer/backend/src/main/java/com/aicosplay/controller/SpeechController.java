@@ -3,15 +3,18 @@ package com.aicosplay.controller;
 import com.aicosplay.exception.BusinessException;
 import com.aicosplay.model.ApiResponse;
 import com.aicosplay.service.impl.SpeechRecognitionDispatcher;
+import com.aicosplay.service.impl.TextToSpeechService;
 import com.aicosplay.utils.UserContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 语音识别控制器
- * 处理语音转文字的API请求
+ * 处理语音转文字和文字转语音的API请求
  */
 @RestController
 @RequestMapping("/api/speech")
@@ -19,6 +22,9 @@ public class SpeechController {
     
     @Autowired
     private SpeechRecognitionDispatcher speechRecognitionDispatcher;
+    
+    @Autowired
+    private TextToSpeechService textToSpeechService;
     
     /**
      * 语音识别API
@@ -70,5 +76,31 @@ public class SpeechController {
         
         speechRecognitionDispatcher.switchServiceType(type);
         return ResponseEntity.ok(ApiResponse.success("服务类型切换成功"));
+    }
+    
+    /**
+     * 获取语音数据
+     * 根据语音ID返回音频数据
+     */
+    @GetMapping("/{voiceId}")
+    public ResponseEntity<byte[]> getSpeechData(@PathVariable String voiceId) {
+        // 验证用户是否登录
+        if (UserContext.getCurrentUser() == null) {
+            throw new BusinessException("USER_NOT_AUTHENTICATED", "用户未登录");
+        }
+        
+        // 获取音频数据
+        byte[] audioData = textToSpeechService.getAudioData(voiceId);
+        if (audioData == null) {
+            throw new BusinessException("VOICE_FILE_NOT_FOUND", "语音数据不存在或已过期");
+        }
+        
+        // 设置响应头
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        headers.setContentDispositionFormData("attachment", "speech.wav");
+        headers.setContentLength(audioData.length);
+        
+        return ResponseEntity.ok().headers(headers).body(audioData);
     }
 }

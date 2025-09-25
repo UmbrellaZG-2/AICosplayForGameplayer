@@ -104,6 +104,11 @@ export const speechAPI = {
   // 切换语音识别服务类型
   switchServiceType: (type) => api.post('/api/speech/switch', null, {
     params: { type }
+  }),
+  // 获取语音数据
+  getSpeechData: (voiceId) => api.get(`/api/speech/${voiceId}`, {
+    responseType: 'arraybuffer',
+    timeout: 30000
   })
 }
 

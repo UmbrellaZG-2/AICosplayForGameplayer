@@ -3,7 +3,6 @@ package com.aicosplay.controller;
 import com.aicosplay.entity.Conversation;
 import com.aicosplay.entity.Message;
 import com.aicosplay.entity.User;
-import com.aicosplay.exception.BusinessException;
 import com.aicosplay.model.ApiResponse;
 import com.aicosplay.repository.ConversationRepository;
 import com.aicosplay.service.ConversationService;

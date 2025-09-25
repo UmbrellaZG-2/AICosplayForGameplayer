@@ -202,9 +202,9 @@ public class ConversationService {
                 // 尝试为安全提示生成语音
                 Message messageWithVoice = textToSpeechService.convertTextToSpeech(safetyMessage);
                 messageRepository.save(messageWithVoice);
-            } catch (Exception e) {
+            } catch (Exception ex) {
                 // 语音转换失败时，仍然保存文本消息
-                logger.error("安全提示转语音失败，仅保存文本消息: {}", e.getMessage());
+                logger.error("安全提示转语音失败，仅保存文本消息: {}", ex.getMessage());
                 messageRepository.save(safetyMessage);
             }
         } catch (Exception e) {

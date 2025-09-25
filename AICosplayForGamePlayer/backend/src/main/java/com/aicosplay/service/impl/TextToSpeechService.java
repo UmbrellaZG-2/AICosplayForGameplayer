@@ -4,20 +4,14 @@ import com.aicosplay.entity.Message;
 import com.aicosplay.exception.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.UUID;
+import javax.sound.sampled.AudioFileFormat;
 
 import com.sun.speech.freetts.Voice;
 import com.sun.speech.freetts.VoiceManager;
@@ -26,11 +20,7 @@ import com.sun.speech.freetts.VoiceManager;
 public class TextToSpeechService {
 
     private static final Logger logger = LoggerFactory.getLogger(TextToSpeechService.class);
-    private static final String AUDIO_FORMAT = "wav";
     private static final String VOICE_NAME = "kevin16";
-    
-    @Value("${audio.storage.path}")
-    private String audioStoragePath;
     
     public TextToSpeechService() {
         // 初始化FreeTTS
@@ -38,7 +28,7 @@ public class TextToSpeechService {
     }
     
     /**
-     * 将文本转换为语音并保存到文件
+     * 将文本转换为语音数据
      * @param message 要转换的消息对象
      * @return 更新后的消息对象
      */
@@ -49,29 +39,19 @@ public class TextToSpeechService {
         }
         
         try {
-            // 创建音频存储目录（如果不存在）
-            Path storagePath = Paths.get(audioStoragePath);
-            if (!Files.exists(storagePath)) {
-                Files.createDirectories(storagePath);
-            }
-            
-            // 生成唯一的文件名
-            String filename = "ai_voice_" + UUID.randomUUID() + "." + AUDIO_FORMAT;
-            String filePath = storagePath.resolve(filename).toString();
-            
             // 执行文字转语音
             byte[] audioData = generateSpeechAudio(message.getContent());
             
-            // 保存音频数据到文件
-            saveAudioToFile(audioData, filePath);
+            // 存储音频数据并获取语音ID
+            String voiceId = storeAudioData(audioData);
             
             // 更新消息对象的语音相关字段
             message.setIsVoiceMessage((byte) 1);
-            message.setVoiceFilePath(filePath);
+            message.setVoiceFilePath(voiceId); // 使用voiceId替代文件路径
             message.setVoiceDuration(calculateAudioDuration(audioData));
             message.setShowTextButton((byte) 1); // 默认显示文字按钮
             
-            logger.info("成功将消息转换为语音并保存: {}", filePath);
+            logger.info("成功将消息转换为语音数据");
             return message;
         } catch (Exception e) {
             logger.error("文字转语音失败: {}", e.getMessage(), e);
@@ -96,41 +76,41 @@ public class TextToSpeechService {
         voice.allocate();
         
         try {
-            // 创建内存音频流
-            com.sun.speech.freetts.audio.JavaStreamingAudioPlayer audioPlayer = 
-                new com.sun.speech.freetts.audio.JavaStreamingAudioPlayer();
+            // 创建临时文件
+        File tempFile = File.createTempFile("tts_", ".wav");
+        tempFile.deleteOnExit(); // 程序退出时删除临时文件
+        String tempFilePath = tempFile.getAbsolutePath();
+        
+        // 创建文件音频播放器
+        com.sun.speech.freetts.audio.SingleFileAudioPlayer audioPlayer = 
+            new com.sun.speech.freetts.audio.SingleFileAudioPlayer(tempFilePath.replace(".wav", ""), AudioFileFormat.Type.WAVE);
+        
+        // 设置音频播放器
+        voice.setAudioPlayer(audioPlayer);
+        
+        // 朗读文本
+        voice.speak(text);
+        
+        // 关闭音频播放器，确保数据写入文件
+        audioPlayer.close();
+        
+        // 读取临时文件中的音频数据
+        byte[] audioData = new byte[(int) tempFile.length()];
+        try (FileInputStream fis = new FileInputStream(tempFile)) {
+            fis.read(audioData);
+        } catch (IOException e) {
+            logger.error("Failed to read audio file: {}", e.getMessage());
+            throw new RuntimeException("Failed to read audio file", e);
+        }
+        
+        // 删除临时文件
+        tempFile.delete();
             
-            // 设置音频播放器
-            voice.setAudioPlayer(audioPlayer);
-            
-            // 朗读文本
-            voice.speak(text);
-            
-            // 获取音频数据
-            byte[] audioData = audioPlayer.getAudioData();
             return audioData;
         } finally {
             // 释放语音资源
             voice.deallocate();
         }
-    }
-    
-    /**
-     * 保存音频数据到文件
-     */
-    private void saveAudioToFile(byte[] audioData, String filePath) throws Exception {
-        // 创建文件对象
-        File audioFile = new File(filePath);
-        
-        // 设置音频格式
-        AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
-        
-        // 创建音频输入流
-        AudioInputStream audioInputStream = new AudioInputStream(
-                new ByteArrayInputStream(audioData), format, audioData.length / format.getFrameSize());
-        
-        // 保存音频文件
-        AudioSystem.write(audioInputStream, AudioFileFormat.Type.WAVE, audioFile);
     }
     
     /**
@@ -146,13 +126,40 @@ public class TextToSpeechService {
     /**
      * 获取语音文件的URL路径
      */
-    public String getVoiceFileUrl(String voiceFilePath) {
-        if (!StringUtils.hasText(voiceFilePath)) {
+    public String getVoiceFileUrl(String voiceId) {
+        if (!StringUtils.hasText(voiceId)) {
             return null;
         }
         
-        // 提取相对路径作为URL
-        File file = new File(voiceFilePath);
-        return "/audio/" + file.getName();
+        // 返回音频数据获取的URL路径
+        return "/api/speech/" + voiceId;
+    }
+    
+    // 音频数据存储，用于临时保存生成的音频数据
+    private final java.util.Map<String, byte[]> audioDataCache = new java.util.concurrent.ConcurrentHashMap<>();
+    
+    /**
+     * 存储音频数据并返回语音ID
+     */
+    public String storeAudioData(byte[] audioData) {
+        String voiceId = "voice_" + UUID.randomUUID().toString();
+        audioDataCache.put(voiceId, audioData);
+        
+        // 设置自动过期，5分钟后移除缓存的数据
+        new java.util.Timer().schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                audioDataCache.remove(voiceId);
+            }
+        }, 5 * 60 * 1000);
+        
+        return voiceId;
+    }
+    
+    /**
+     * 根据语音ID获取音频数据
+     */
+    public byte[] getAudioData(String voiceId) {
+        return audioDataCache.get(voiceId);
     }
 }
