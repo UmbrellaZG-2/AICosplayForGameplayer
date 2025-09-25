@@ -1,5 +1,6 @@
 package com.aicosplay.service;
 
+import com.aicosplay.exception.BusinessException;
 import com.aicosplay.security.filter.SecurityContext;
 import com.aicosplay.security.filter.SecurityFilterChainManager;
 import org.springframework.ai.chat.ChatClient;

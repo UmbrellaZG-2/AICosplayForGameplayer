@@ -124,6 +124,20 @@
             <version>0.8.0</version>
         </dependency>
         
+        <!-- Spring AI Ollama - 用于本地大模型交互 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama</artifactId>
+            <version>0.8.0</version>
+        </dependency>
+        
+        <!-- Spring AI Core - 提供核心AI功能和组件 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-core</artifactId>
+            <version>0.8.0</version>
+        </dependency>
+        
         <!-- Apache Commons FileUpload - 用于处理文件上传 -->
         <dependency>
             <groupId>commons-fileupload</groupId>

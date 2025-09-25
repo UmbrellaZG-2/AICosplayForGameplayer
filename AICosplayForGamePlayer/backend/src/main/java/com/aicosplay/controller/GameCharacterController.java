@@ -2,12 +2,13 @@ package com.aicosplay.controller;
 
 import com.aicosplay.entity.GameCharacter;
 import com.aicosplay.entity.User;
+import com.aicosplay.exception.UnauthorizedException;
+import com.aicosplay.model.ApiResponse;
 import com.aicosplay.service.GameCharacterService;
+import com.aicosplay.utils.UserContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,120 +19,84 @@ public class GameCharacterController {
     @Autowired
     private GameCharacterService gameCharacterService;
 
-    // 获取当前登录用户
-    private User getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof User) {
-            return (User) authentication.getPrincipal();
-        }
-        return null;
-    }
-
     // 创建新角色
     @PostMapping
-    public ResponseEntity<?> createCharacter(@RequestBody GameCharacter character) {
-        try {
-            User currentUser = getCurrentUser();
-            // 设置创建者
-            character.setUser(currentUser);
-            // 自定义角色的isPreset默认为0
-            character.setIsPreset((byte) 0);
-            GameCharacter createdCharacter = gameCharacterService.createCharacter(character);
-            return new ResponseEntity<>(createdCharacter, HttpStatus.CREATED);
-        } catch (RuntimeException e) {
-            return new ResponseEntity<>(new ApiResponse(false, e.getMessage()), HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<ApiResponse<GameCharacter>> createCharacter(@RequestBody GameCharacter character) {
+        // 获取当前登录用户
+        User currentUser = UserContext.getCurrentUser();
+        
+        // 设置创建者
+        character.setUser(currentUser);
+        // 自定义角色的isPreset默认为0
+        character.setIsPreset((byte) 0);
+        GameCharacter createdCharacter = gameCharacterService.createCharacter(character);
+        return ResponseEntity.ok(ApiResponse.success(createdCharacter));
     }
 
     // 获取用户可见的所有角色（预设角色+当前用户的自定义角色）
     @GetMapping
-    public ResponseEntity<List<GameCharacter>> getVisibleCharacters() {
-        User currentUser = getCurrentUser();
+    public ResponseEntity<ApiResponse<List<GameCharacter>>> getVisibleCharacters() {
+        User currentUser = UserContext.isUserLoggedIn() ? UserContext.getCurrentUser() : null;
         List<GameCharacter> characters = gameCharacterService.getVisibleCharacters(currentUser);
-        return new ResponseEntity<>(characters, HttpStatus.OK);
+        return ResponseEntity.ok(ApiResponse.success(characters));
     }
 
     // 根据ID获取角色
     @GetMapping("/{id}")
-    public ResponseEntity<?> getCharacterById(@PathVariable Long id) {
-        try {
-            GameCharacter character = gameCharacterService.getCharacterById(id)
-                    .orElseThrow(() -> new RuntimeException("Character not found"));
-            User currentUser = getCurrentUser();
-            // 检查用户是否有权限查看该角色
-            if (character.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(character.getUser().getId()))) {
-                return new ResponseEntity<>(new ApiResponse(false, "无权访问该角色"), HttpStatus.FORBIDDEN);
+    public ResponseEntity<ApiResponse<GameCharacter>> getCharacterById(@PathVariable Long id) {
+        GameCharacter character = gameCharacterService.getCharacterById(id)
+                .orElseThrow(() -> new RuntimeException("角色不存在"));
+        
+        // 检查用户是否有权限查看该角色
+        if (character.getIsPreset() == (byte) 0) {
+            User currentUser = UserContext.getCurrentUser();
+            if (!currentUser.getId().equals(character.getUser().getId())) {
+                throw new RuntimeException("您没有权限访问该角色");
             }
-            return new ResponseEntity<>(character, HttpStatus.OK);
-        } catch (RuntimeException e) {
-            return new ResponseEntity<>(new ApiResponse(false, e.getMessage()), HttpStatus.NOT_FOUND);
         }
+        
+        return ResponseEntity.ok(ApiResponse.success(character));
     }
 
     // 更新角色
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateCharacter(@PathVariable Long id, @RequestBody GameCharacter character) {
-        try {
-            GameCharacter existingCharacter = gameCharacterService.getCharacterById(id)
-                    .orElseThrow(() -> new RuntimeException("Character not found"));
-            User currentUser = getCurrentUser();
-            // 检查用户是否有权限更新该角色
-            if (existingCharacter.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
-                return new ResponseEntity<>(new ApiResponse(false, "无权更新该角色"), HttpStatus.FORBIDDEN);
+    public ResponseEntity<ApiResponse<GameCharacter>> updateCharacter(@PathVariable Long id, @RequestBody GameCharacter character) {
+        GameCharacter existingCharacter = gameCharacterService.getCharacterById(id)
+                .orElseThrow(() -> new RuntimeException("角色不存在"));
+        
+        // 检查用户是否有权限更新该角色
+        if (existingCharacter.getIsPreset() == (byte) 0) {
+            User currentUser = UserContext.getCurrentUser();
+            if (!currentUser.getId().equals(existingCharacter.getUser().getId())) {
+                throw new RuntimeException("您没有权限更新该角色");
             }
-            GameCharacter updatedCharacter = gameCharacterService.updateCharacter(id, character);
-            return new ResponseEntity<>(updatedCharacter, HttpStatus.OK);
-        } catch (RuntimeException e) {
-            return new ResponseEntity<>(new ApiResponse(false, e.getMessage()), HttpStatus.BAD_REQUEST);
         }
+        
+        GameCharacter updatedCharacter = gameCharacterService.updateCharacter(id, character);
+        return ResponseEntity.ok(ApiResponse.success(updatedCharacter));
     }
 
     // 删除角色
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteCharacter(@PathVariable Long id) {
-        try {
-            GameCharacter existingCharacter = gameCharacterService.getCharacterById(id)
-                    .orElseThrow(() -> new RuntimeException("Character not found"));
-            User currentUser = getCurrentUser();
-            // 检查用户是否有权限删除该角色
-            if (existingCharacter.getIsPreset() == (byte) 0 && (currentUser == null || !currentUser.getId().equals(existingCharacter.getUser().getId()))) {
-                return new ResponseEntity<>(new ApiResponse(false, "无权删除该角色"), HttpStatus.FORBIDDEN);
+    public ResponseEntity<ApiResponse<?>> deleteCharacter(@PathVariable Long id) {
+        GameCharacter existingCharacter = gameCharacterService.getCharacterById(id)
+                .orElseThrow(() -> new RuntimeException("角色不存在"));
+        
+        // 检查用户是否有权限删除该角色
+        if (existingCharacter.getIsPreset() == (byte) 0) {
+            User currentUser = UserContext.getCurrentUser();
+            if (!currentUser.getId().equals(existingCharacter.getUser().getId())) {
+                throw new RuntimeException("您没有权限删除该角色");
             }
-            // 不允许删除预设角色
-            if (existingCharacter.getIsPreset() == (byte) 1) {
-                return new ResponseEntity<>(new ApiResponse(false, "预设角色不能删除"), HttpStatus.BAD_REQUEST);
-            }
-            gameCharacterService.deleteCharacter(id);
-            return new ResponseEntity<>(new ApiResponse(true, "角色删除成功"), HttpStatus.OK);
-        } catch (RuntimeException e) {
-            return new ResponseEntity<>(new ApiResponse(false, e.getMessage()), HttpStatus.NOT_FOUND);
         }
+        
+        // 不允许删除预设角色
+        if (existingCharacter.getIsPreset() == (byte) 1) {
+            throw new RuntimeException("预设角色不能删除");
+        }
+        
+        gameCharacterService.deleteCharacter(id);
+        return ResponseEntity.ok(ApiResponse.success("角色删除成功"));
     }
 
-    // ApiResponse 内部类，用于返回操作结果
-    private static class ApiResponse {
-        private boolean success;
-        private String message;
-
-        public ApiResponse(boolean success, String message) {
-            this.success = success;
-            this.message = message;
-        }
-
-        public boolean isSuccess() {
-            return success;
-        }
-
-        public void setSuccess(boolean success) {
-            this.success = success;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
-    }
 }

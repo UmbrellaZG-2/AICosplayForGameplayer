@@ -264,6 +264,9 @@
         <p style="text-align: center; color: #666; margin-top: 10px;">
           点击确定按钮停止录音并转换为文字
         </p>
+        <p style="text-align: center; color: #999; margin-top: 5px; font-size: 12px;">
+          录音最长不超过60秒
+        </p>
       </div>
       <div class="modal-footer">
         <button 
@@ -401,9 +404,14 @@ const startRecording = async () => {
     isRecording.value = true
     recordingDuration.value = 0
     
-    // 开始计时
+    // 开始计时，并添加60秒时间限制
     recordingInterval = setInterval(() => {
       recordingDuration.value++
+      
+      // 如果录音时长达到60秒，自动停止录音
+      if (recordingDuration.value >= 60) {
+        stopRecording()
+      }
     }, 1000)
     
     console.log('录音开始')

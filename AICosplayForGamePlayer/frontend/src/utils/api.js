@@ -63,7 +63,11 @@ export const authAPI = {
   checkUsername: (username) => api.post('/api/auth/check-username', { username }),
   checkEmail: (email) => api.post('/api/auth/check-email', { email }),
   verifyUserEmail: (username, email) => api.post('/api/auth/verify-user-email', { username, email }),
-  resetPassword: (data) => api.post('/api/auth/reset-password', data)
+  resetPassword: (data) => api.post('/api/auth/reset-password', data),
+  // 获取当前用户信息
+  getUserInfo: () => api.get('/api/auth/user'),
+  // 更新用户信息
+  updateUserInfo: (userData) => api.put('/api/auth/user', userData)
 }
 
 // 对话相关API
@@ -94,7 +98,13 @@ export const speechAPI = {
       },
       timeout: 30000 // 语音识别可能需要更长时间
     })
-  }
+  },
+  // 检查语音识别服务的健康状态
+  healthCheck: () => api.get('/api/speech/health'),
+  // 切换语音识别服务类型
+  switchServiceType: (type) => api.post('/api/speech/switch', null, {
+    params: { type }
+  })
 }
 
 export default api

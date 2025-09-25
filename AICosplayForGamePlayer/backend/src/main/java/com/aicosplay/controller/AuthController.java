@@ -1,21 +1,21 @@
 package com.aicosplay.controller;
 
 import com.aicosplay.entity.User;
-import com.aicosplay.exception.EmailAlreadyExistsException;
-import com.aicosplay.exception.UsernameAlreadyExistsException;
+import com.aicosplay.exception.BusinessException;
+import com.aicosplay.model.ApiResponse;
 import com.aicosplay.service.UserService;
+import com.aicosplay.utils.UserContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpSession;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 // 临时存储验证码的内存缓存
 class VerificationCodeCache {
+
     private static final ConcurrentHashMap<String, String> cache = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Long> expirationTimeCache = new ConcurrentHashMap<>();
     private static final long EXPIRATION_TIME = 5 * 60 * 1000; // 5分钟过期
@@ -53,232 +53,217 @@ public class AuthController {
 
     // 验证用户名和邮箱是否匹配
     @PostMapping("/verify-user-email")
-    public ResponseEntity<?> verifyUserEmail(@RequestBody VerifyUserEmailRequest request) {
-        try {
-            // 检查用户名和邮箱是否匹配
-            Optional<User> user = userService.findByUsername(request.getUsername());
-            if (user.isEmpty()) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名不存在"));
-            }
-            
-            if (!user.get().getEmail().equals(request.getEmail())) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名与邮箱不匹配"));
-            }
-            
-            return ResponseEntity.ok(new ApiResponse(true, "验证成功"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "验证失败，请稍后重试"));
+    public ResponseEntity<ApiResponse<?>> verifyUserEmail(@RequestBody VerifyUserEmailRequest request) {
+        // 检查用户名和邮箱是否匹配
+        Optional<User> user = userService.findByUsername(request.getUsername());
+        if (user.isEmpty()) {
+            throw new BusinessException("USER_NOT_FOUND", "用户名不存在");
         }
+        
+        if (!user.get().getEmail().equals(request.getEmail())) {
+            throw new BusinessException("USER_EMAIL_MISMATCH", "用户名与邮箱不匹配");
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("验证成功"));
     }
     
-    // 生成验证码
+    // 检查用户名是否已存在
     @PostMapping("/check-username")
-    public ResponseEntity<?> checkUsername(@RequestBody UsernameRequest usernameRequest) {
-        try {
-            boolean exists = userService.existsByUsername(usernameRequest.getUsername());
-            if (exists) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名已被使用"));
-            }
-            return ResponseEntity.ok(new ApiResponse(true, "用户名可用"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "检查用户名失败"));
+    public ResponseEntity<ApiResponse<?>> checkUsername(@RequestBody UsernameRequest usernameRequest) {
+        boolean exists = userService.existsByUsername(usernameRequest.getUsername());
+        if (exists) {
+            throw new BusinessException("USERNAME_ALREADY_EXISTS", "用户名已被使用");
         }
+        return ResponseEntity.ok(ApiResponse.success("用户名可用"));
     }
-    
+
+    // 检查邮箱是否已存在
     @PostMapping("/check-email")
-    public ResponseEntity<?> checkEmail(@RequestBody EmailRequest emailRequest) {
-        try {
-            boolean exists = userService.existsByEmail(emailRequest.getEmail());
-            if (exists) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "邮箱已被使用"));
-            }
-            return ResponseEntity.ok(new ApiResponse(true, "邮箱可用"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "检查邮箱失败"));
+    public ResponseEntity<ApiResponse<?>> checkEmail(@RequestBody EmailRequest emailRequest) {
+        boolean exists = userService.existsByEmail(emailRequest.getEmail());
+        if (exists) {
+            throw new BusinessException("EMAIL_ALREADY_EXISTS", "邮箱已被使用");
         }
+        return ResponseEntity.ok(ApiResponse.success("邮箱可用"));
     }
     
     @PostMapping("/generate-code")
-    public ResponseEntity<?> generateVerificationCode(@RequestBody EmailRequest emailRequest) {
-        try {
-            // 生成6位数字验证码
-            Random random = new Random();
-            int codeInt = 100000 + random.nextInt(900000); // 生成100000-999999之间的随机数
-            String code = String.valueOf(codeInt);
-            
-            // 存储验证码
-            VerificationCodeCache.put(emailRequest.getEmail(), code);
-            
-            // 打印验证码到控制台
-            System.out.println("生成的验证码：" + code + " 用于邮箱：" + emailRequest.getEmail());
-            
-            return ResponseEntity.ok(new ApiResponse(true, "验证码已发送"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "生成验证码失败"));
-        }
+    public ResponseEntity<ApiResponse<?>> generateVerificationCode(@RequestBody EmailRequest emailRequest) {
+        // 生成6位数字验证码
+        Random random = new Random();
+        int codeInt = 100000 + random.nextInt(900000); // 生成100000-999999之间的随机数
+        String code = String.valueOf(codeInt);
+        
+        // 存储验证码
+        VerificationCodeCache.put(emailRequest.getEmail(), code);
+        
+        // 打印验证码到控制台
+        System.out.println("生成的验证码：" + code + " 用于邮箱：" + emailRequest.getEmail());
+        
+        return ResponseEntity.ok(ApiResponse.success("验证码已发送"));
     }
     
     // 重置密码
     @PostMapping("/reset-password")
-    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
-        try {
-            // 1. 验证用户名和邮箱是否匹配
-            Optional<User> userOpt = userService.findByUsername(request.getUsername());
-            if (userOpt.isEmpty()) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名不存在"));
-            }
-            
-            User user = userOpt.get();
-            if (!user.getEmail().equals(request.getEmail())) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名与邮箱不匹配"));
-            }
-            
-            // 2. 验证验证码
-            String storedCode = VerificationCodeCache.get(request.getEmail());
-            if (storedCode == null) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码已过期或不存在"));
-            }
-            
-            if (!storedCode.equals(request.getVerificationCode())) {
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码错误"));
-            }
-            
-            // 3. 更新用户密码
-            userService.updatePassword(user.getId(), request.getNewPassword());
-            
-            // 4. 清除验证码
-            VerificationCodeCache.put(request.getEmail(), null);
-            
-            return ResponseEntity.ok(new ApiResponse(true, "密码重置成功"));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "密码重置失败，请稍后重试"));
+    public ResponseEntity<ApiResponse<?>> resetPassword(@RequestBody ResetPasswordRequest request) {
+        // 1. 验证用户名和邮箱是否匹配
+        Optional<User> userOpt = userService.findByUsername(request.getUsername());
+        if (userOpt.isEmpty()) {
+            throw new BusinessException("USER_NOT_FOUND", "用户名不存在");
         }
+        
+        User user = userOpt.get();
+        if (!user.getEmail().equals(request.getEmail())) {
+            throw new BusinessException("USER_EMAIL_MISMATCH", "用户名与邮箱不匹配");
+        }
+        
+        // 2. 验证验证码
+        String storedCode = VerificationCodeCache.get(request.getEmail());
+        if (storedCode == null) {
+            throw new BusinessException("VERIFICATION_CODE_EXPIRED", "验证码已过期或不存在");
+        }
+        
+        if (!storedCode.equals(request.getVerificationCode())) {
+            throw new BusinessException("INVALID_VERIFICATION_CODE", "验证码错误");
+        }
+        
+        // 3. 更新用户密码
+        userService.updatePassword(user.getId(), request.getNewPassword());
+        
+        // 4. 清除验证码
+        VerificationCodeCache.put(request.getEmail(), null);
+        
+        return ResponseEntity.ok(ApiResponse.success("密码重置成功"));
     }
 
     @PostMapping("/register")
-    // 移除控制器层的事务注解，让服务层处理事务
-    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
-        try {
-            System.out.println("接收到注册请求: " + registerRequest.getUsername() + ", " + registerRequest.getEmail());
-            
-            // 验证验证码
-            String storedCode = VerificationCodeCache.get(registerRequest.getEmail());
-            System.out.println("缓存中的验证码: " + storedCode);
-            if (storedCode == null) {
-                System.out.println("验证码已过期或不存在");
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码已过期或不存在"));
-            }
-            
-            if (!storedCode.equals(registerRequest.getVerificationCode())) {
-                System.out.println("验证码错误: 输入的验证码: " + registerRequest.getVerificationCode());
-                return ResponseEntity.badRequest().body(new ApiResponse(false, "验证码错误"));
-            }
-            
-            // 所有验证通过后，再创建用户
-            System.out.println("所有验证通过，开始创建用户");
-            User user = userService.registerUser(
-                    registerRequest.getUsername(),
-                    registerRequest.getEmail(),
-                    registerRequest.getPassword()
-            );
-            
-            System.out.println("用户创建成功，用户ID: " + user.getId());
-            
-            // 注册成功后移除验证码
-            VerificationCodeCache.put(registerRequest.getEmail(), null);
-            
-            return ResponseEntity.ok(new ApiResponse(true, "注册成功"));
-        } catch (UsernameAlreadyExistsException e) {
-            System.out.println("用户名已存在异常: " + e.getMessage());
-            e.printStackTrace();
-            // 返回用户名已被使用的错误信息
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "用户名已被使用"));
-        } catch (EmailAlreadyExistsException e) {
-            System.out.println("邮箱已存在异常: " + e.getMessage());
-            e.printStackTrace();
-            // 返回邮箱已被使用的错误信息
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "邮箱已被使用"));
-        } catch (RuntimeException e) {
-            System.out.println("运行时异常: " + e.getMessage());
-            e.printStackTrace();
-            // 让服务层的事务正常回滚，然后返回错误响应
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage() != null ? e.getMessage() : "注册失败"));
-        } catch (Exception e) {
-            System.out.println("一般异常: " + e.getMessage());
-            e.printStackTrace();
-            // 捕获所有其他异常，确保返回有意义的错误消息
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "注册失败，请稍后重试"));
+    public ResponseEntity<ApiResponse<?>> register(@RequestBody RegisterRequest registerRequest) {
+        System.out.println("接收到注册请求: " + registerRequest.getUsername() + ", " + registerRequest.getEmail());
+        
+        // 验证验证码
+        String storedCode = VerificationCodeCache.get(registerRequest.getEmail());
+        System.out.println("缓存中的验证码: " + storedCode);
+        if (storedCode == null) {
+            System.out.println("验证码已过期或不存在");
+            throw new BusinessException("VERIFICATION_CODE_EXPIRED", "验证码已过期或不存在");
         }
+        
+        if (!storedCode.equals(registerRequest.getVerificationCode())) {
+            System.out.println("验证码错误: 输入的验证码: " + registerRequest.getVerificationCode());
+            throw new BusinessException("INVALID_VERIFICATION_CODE", "验证码错误");
+        }
+        
+        // 所有验证通过后，再创建用户
+        System.out.println("所有验证通过，开始创建用户");
+        User user = userService.registerUser(
+                registerRequest.getUsername(),
+                registerRequest.getEmail(),
+                registerRequest.getPassword()
+        );
+        
+        System.out.println("用户创建成功，用户ID: " + user.getId());
+        
+        // 注册成功后移除验证码
+        VerificationCodeCache.put(registerRequest.getEmail(), null);
+        
+        return ResponseEntity.ok(ApiResponse.success("注册成功"));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpSession session) {
+    public ResponseEntity<ApiResponse<?>> login(@RequestBody LoginRequest loginRequest) {
+        // 1. 验证用户名和密码
+        User user = userService.findByUsername(loginRequest.getUsername())
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "用户名不存在"));
+        
+        // 2. 验证密码
         boolean authenticated = userService.authenticate(
                 loginRequest.getUsername(),
                 loginRequest.getPassword()
         );
-        if (authenticated) {
-            // 设置会话属性
-            session.setAttribute("username", loginRequest.getUsername());
-            return ResponseEntity.ok(new ApiResponse(true, "Login successful"));
-        } else {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "Invalid username or password"));
+        
+        if (!authenticated) {
+            throw new BusinessException("INVALID_PASSWORD", "密码错误");
         }
+        
+        // 3. 设置登录状态
+        UserContext.setLoggedIn(user);
+        
+        // 4. 返回用户信息
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(user.getId());
+        userResponse.setUsername(user.getUsername());
+        userResponse.setEmail(user.getEmail());
+        userResponse.setNickname(user.getNickname());
+        userResponse.setAvatar(user.getAvatar());
+        
+        return ResponseEntity.ok(ApiResponse.success(userResponse));
     }
 
     // 获取用户信息
     @GetMapping("/user")
-    public ResponseEntity<?> getUserInfo(HttpSession session) {
-        String username = (String) session.getAttribute("username");
-        if (username == null) {
-            return ResponseEntity.status(401).body(new ApiResponse(false, "User not authenticated"));
+    public ResponseEntity<ApiResponse<?>> getUserInfo() {
+        // 使用UserContext获取当前用户
+        User currentUser = UserContext.getCurrentUser();
+        if (currentUser == null) {
+            throw new BusinessException("USER_NOT_AUTHENTICATED", "用户未登录");
         }
         
-        Optional<User> user = userService.findByUsername(username);
-        if (user.isPresent()) {
-            // 创建用户信息响应对象，不包含密码等敏感信息
-            UserResponse userResponse = new UserResponse();
-            userResponse.setId(user.get().getId());
-            userResponse.setUsername(user.get().getUsername());
-            userResponse.setEmail(user.get().getEmail());
-            userResponse.setNickname(user.get().getNickname());
-            userResponse.setAvatar(user.get().getAvatar());
-            userResponse.setStatus(user.get().getStatus());
-            userResponse.setCreatedAt(user.get().getCreatedAt().toString());
-            userResponse.setUpdatedAt(user.get().getUpdatedAt().toString());
+        User user = userService.findById(currentUser.getId())
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "用户不存在"));
+        
+        // 创建用户信息响应对象，不包含密码等敏感信息
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(user.getId());
+        userResponse.setUsername(user.getUsername());
+        userResponse.setEmail(user.getEmail());
+        userResponse.setNickname(user.getNickname());
+        userResponse.setAvatar(user.getAvatar());
+        userResponse.setStatus(user.getStatus());
+        userResponse.setCreatedAt(user.getCreatedAt().toString());
+        userResponse.setUpdatedAt(user.getUpdatedAt().toString());
 
-            
-            return ResponseEntity.ok(userResponse);
-        } else {
-            return ResponseEntity.status(404).body(new ApiResponse(false, "User not found"));
-        }
+        return ResponseEntity.ok(ApiResponse.success(userResponse));
     }
 
     // 更新用户信息
     @PutMapping("/user")
-    public ResponseEntity<?> updateUserInfo(@RequestBody UserUpdateRequest request, HttpSession session) {
-        String username = (String) session.getAttribute("username");
-        if (username == null) {
-            return ResponseEntity.status(401).body(new ApiResponse(false, "User not authenticated"));
+    public ResponseEntity<ApiResponse<?>> updateUserInfo(@RequestBody UserUpdateRequest request) {
+        // 验证登录状态
+        User currentUser = UserContext.getCurrentUser();
+        if (currentUser == null) {
+            throw new BusinessException("USER_NOT_AUTHENTICATED", "用户未登录");
         }
         
-        try {
-            User updatedUser = userService.updateUserInfo(username, request.getNickname(), request.getAvatar());
-            UserResponse userResponse = new UserResponse();
-            userResponse.setId(updatedUser.getId());
-            userResponse.setUsername(updatedUser.getUsername());
-            userResponse.setEmail(updatedUser.getEmail());
-            userResponse.setNickname(updatedUser.getNickname());
-            userResponse.setAvatar(updatedUser.getAvatar());
-            userResponse.setStatus(updatedUser.getStatus());
-            userResponse.setCreatedAt(updatedUser.getCreatedAt().toString());
-            userResponse.setUpdatedAt(updatedUser.getUpdatedAt().toString());
-            
-            return ResponseEntity.ok(userResponse);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, e.getMessage()));
+        User user = userService.findById(currentUser.getId())
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "用户不存在"));
+        
+        // 更新用户信息
+        if (request.getNickname() != null && !request.getNickname().isEmpty()) {
+            user.setNickname(request.getNickname());
         }
+        
+        // 如果用户上传了头像
+        if (request.getAvatar() != null && !request.getAvatar().isEmpty()) {
+            user.setAvatar(request.getAvatar());
+        }
+        
+        // 使用updateUserInfo方法更新用户信息
+        user = userService.updateUserInfo(user.getUsername(), 
+                                          request.getNickname() != null ? request.getNickname() : user.getNickname(),
+                                          request.getAvatar() != null ? request.getAvatar() : user.getAvatar());
+        
+        // 返回更新后的用户信息
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(user.getId());
+        userResponse.setUsername(user.getUsername());
+        userResponse.setEmail(user.getEmail());
+        userResponse.setNickname(user.getNickname());
+        userResponse.setAvatar(user.getAvatar());
+        userResponse.setStatus(user.getStatus());
+        userResponse.setCreatedAt(user.getCreatedAt().toString());
+        userResponse.setUpdatedAt(user.getUpdatedAt().toString());
+        
+        return ResponseEntity.ok(ApiResponse.success(userResponse));
     }
 
     // 请求和响应DTO类
@@ -404,19 +389,5 @@ public class AuthController {
         public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
     }
 
-    public static class ApiResponse {
-        private boolean success;
-        private String message;
 
-        public ApiResponse(boolean success, String message) {
-            this.success = success;
-            this.message = message;
-        }
-
-        // Getters and Setters
-        public boolean isSuccess() { return success; }
-        public void setSuccess(boolean success) { this.success = success; }
-        public String getMessage() { return message; }
-        public void setMessage(String message) { this.message = message; }
-    }
 }

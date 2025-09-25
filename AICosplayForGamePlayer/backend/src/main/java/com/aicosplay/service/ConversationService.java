@@ -4,6 +4,7 @@ import com.aicosplay.entity.Conversation;
 import com.aicosplay.entity.Message;
 import com.aicosplay.entity.User;
 import com.aicosplay.entity.GameCharacter;
+import com.aicosplay.exception.BusinessException;
 import com.aicosplay.repository.ConversationRepository;
 import com.aicosplay.repository.MessageRepository;
 import com.aicosplay.repository.GameCharacterRepository;
@@ -31,7 +32,7 @@ public class ConversationService {
     public Conversation createConversation(User user, String title, String characterName) {
         // 检查角色是否存在
         GameCharacter gameCharacter = gameCharacterRepository.findByName(characterName)
-                .orElseThrow(() -> new RuntimeException("Character not found"));
+                .orElseThrow(() -> new BusinessException("CHARACTER_NOT_FOUND", "Character not found"));
                 
         Conversation conversation = new Conversation();
         conversation.setUser(user);
@@ -44,7 +45,7 @@ public class ConversationService {
     public Conversation createConversationByCharacterId(User user, String title, Long characterId) {
         // 检查角色是否存在
         GameCharacter gameCharacter = gameCharacterRepository.findById(characterId)
-                .orElseThrow(() -> new RuntimeException("Character not found"));
+                .orElseThrow(() -> new BusinessException("CHARACTER_NOT_FOUND", "Character not found"));
                 
         Conversation conversation = new Conversation();
         conversation.setUser(user);
@@ -60,11 +61,11 @@ public class ConversationService {
 
     public Conversation getConversationById(Long id) {
         Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
                 
         // 检查对话是否已删除
         if (conversation.getIsDeleted() == (byte) 1) {
-            throw new RuntimeException("Conversation has been deleted");
+            throw new BusinessException("CONVERSATION_DELETED", "Conversation has been deleted");
         }
                 
         return conversation;
@@ -73,16 +74,16 @@ public class ConversationService {
     @Transactional
     public Message addMessageToConversation(Long conversationId, String content, User sender) {
         Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
         
         // 检查用户是否有权限访问此对话
         if (!conversation.getUser().getId().equals(sender.getId())) {
-            throw new RuntimeException("Unauthorized access to conversation");
+            throw new BusinessException("UNAUTHORIZED_ACCESS", "Unauthorized access to conversation");
         }
         
         // 检查对话是否已删除
         if (conversation.getIsDeleted() == (byte) 1) {
-            throw new RuntimeException("Cannot add message to deleted conversation");
+            throw new BusinessException("CONVERSATION_DELETED", "Cannot add message to deleted conversation");
         }
         
         // 保存用户消息
@@ -100,7 +101,7 @@ public class ConversationService {
         try {
             // 获取角色信息
             GameCharacter character = gameCharacterRepository.findByName(conversation.getCharacterName())
-                    .orElseThrow(() -> new RuntimeException("Character not found"));
+                    .orElseThrow(() -> new BusinessException("CHARACTER_NOT_FOUND", "Character not found"));
             
             // 判断是否是首次对话
             boolean isFirstMessage = recentMessages.size() <= 1; // 只有当前用户消息
@@ -161,7 +162,7 @@ public class ConversationService {
     public void deleteConversation(Long id) {
         // 软删除对话
         Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
                 
         conversation.setIsDeleted((byte) 1);
         conversationRepository.save(conversation);
@@ -171,7 +172,7 @@ public class ConversationService {
     @Transactional
     public void restoreConversation(Long id) {
         Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+                .orElseThrow(() -> new BusinessException("CONVERSATION_NOT_FOUND", "Conversation not found"));
                 
         conversation.setIsDeleted((byte) 0);
         conversationRepository.save(conversation);
@@ -190,17 +191,17 @@ public class ConversationService {
     @Transactional
     public void deleteMessage(Long messageId, User user) {
         Message message = messageRepository.findById(messageId)
-                .orElseThrow(() -> new RuntimeException("Message not found"));
+                .orElseThrow(() -> new BusinessException("MESSAGE_NOT_FOUND", "Message not found"));
         
         // 检查消息所属的对话是否属于当前用户
         Conversation conversation = message.getConversation();
         if (!conversation.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized access to delete message");
+            throw new BusinessException("UNAUTHORIZED_ACCESS", "Unauthorized access to delete message");
         }
         
         // 检查对话是否已删除
         if (conversation.getIsDeleted() == (byte) 1) {
-            throw new RuntimeException("Cannot delete message from deleted conversation");
+            throw new BusinessException("CONVERSATION_DELETED", "Cannot delete message from deleted conversation");
         }
         
         messageRepository.delete(message);

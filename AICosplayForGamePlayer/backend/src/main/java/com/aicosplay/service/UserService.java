@@ -54,6 +54,11 @@ public class UserService {
     public Optional<User> findByUsername(String username) {
         return userRepository.findByUsername(username);
     }
+    
+    // 根据ID查找用户
+    public Optional<User> findById(Long id) {
+        return userRepository.findById(id);
+    }
 
     public boolean authenticate(String username, String password) {
         Optional<User> userOptional = userRepository.findByUsername(username);
