@@ -112,4 +112,7 @@ export const speechAPI = {
   })
 }
 
+// 用户相关API，与authAPI功能重叠，保留以兼容现有代码
+export const userAPI = authAPI
+
 export default api

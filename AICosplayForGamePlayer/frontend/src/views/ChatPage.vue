@@ -315,7 +315,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { conversationAPI, gameCharacterAPI, speechAPI, userAPI } from '../utils/api.js'
 
 const router = useRouter()
@@ -596,12 +595,12 @@ const stopRecording = async () => {
           await fetchMessages();
         } catch (error) {
           console.error('发送消息失败:', error);
-          ElMessage.warning('消息已显示但发送失败，将在网络恢复后自动重试');
+          alert('消息已显示但发送失败，将在网络恢复后自动重试');
         }
         
       } catch (error) {
         console.error('语音识别失败:', error);
-        ElMessage.error('语音识别失败，请重试');
+        alert('语音识别失败，请重试');
       } finally {
         loading.value = false;
       }
@@ -632,11 +631,11 @@ const playVoiceMessage = async (message) => {
       };
     } else {
       console.error('播放语音失败: 未找到语音ID');
-      ElMessage.error('播放语音失败: 未找到语音数据');
+      alert('播放语音失败: 未找到语音数据');
     }
   } catch (error) {
     console.error('播放语音失败:', error);
-    ElMessage.error('播放语音失败');
+      alert('播放语音失败');
   } finally {
     // 隐藏加载状态
     loading.value = false;
@@ -833,7 +832,7 @@ const sendMessage = async () => {
     
   } catch (error) {
     console.error('发送消息失败:', error)
-    ElMessage.error('发送消息失败，请重试')
+    alert('发送消息失败，请重试')
     // 移除临时显示的消息
     messages.value.pop()
   }
