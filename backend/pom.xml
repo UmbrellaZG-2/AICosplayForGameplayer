@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.2</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <groupId>com.aicosplay</groupId>
+    <artifactId>backend</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <repositories>
+        <!-- Spring AI Repository -->
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        
+        <!-- Spring Snapshot Repository -->
+        <repository>
+            <id>spring-snapshots</id>
+            <name>Spring Snapshots</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Spring Boot Starter -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Security -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Data JPA -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Spring Security Test -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- MySQL Driver -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lombok -->
+
+
+        <!-- Spring Boot DevTools -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <optional>true</optional>
+        </dependency>
+        
+        <!-- SpringDoc OpenAPI - 用于自动生成API文档 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+        
+        <!-- Spring Boot WebSocket Starter -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        
+        <!-- Jackson Databind - 用于JSON处理 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+        
+        <!-- Spring AI OpenAI - 用于大模型交互 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <version>0.8.0</version>
+        </dependency>
+        
+        <!-- Spring AI Ollama - 用于本地大模型交互 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama</artifactId>
+            <version>0.8.0</version>
+        </dependency>
+        
+        <!-- Spring AI Core - 提供核心AI功能和组件 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-core</artifactId>
+            <version>0.8.0</version>
+        </dependency>
+        
+        <!-- Apache Commons FileUpload - 用于处理文件上传 -->
+        <dependency>
+            <groupId>commons-fileupload</groupId>
+            <artifactId>commons-fileupload</artifactId>
+            <version>1.5</version>
+        </dependency>
+        
+        <!-- Apache Commons IO - 用于IO操作 -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.16.1</version>
+        </dependency>
+        
+        <!-- FreeTTS - 用于文字转语音 -->
+        <dependency>
+            <groupId>net.sf.sociaal</groupId>
+            <artifactId>freetts</artifactId>
+            <version>1.2.2</version>
+        </dependency>
+        
+        <!-- Java-WebSocket - 用于WebSocket通信 -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.4</version>
+        </dependency>
+        
+        <!-- Vosk Offline Speech Recognition -->
+        <dependency>
+            <groupId>com.alphacephei</groupId>
+            <artifactId>vosk</artifactId>
+            <version>0.3.32</version>
+        </dependency>
+        
+        <!-- FFmpeg - 用于音频处理 -->
+        <dependency>
+            <groupId>ws.schild</groupId>
+            <artifactId>jave-all-deps</artifactId>
+            <version>3.3.1</version>
+        </dependency>
+        
+        <!-- javax.annotation-api - 提供@PostConstruct和@PreDestroy注解 -->
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>2.1.1</version>
+        </dependency>
+        
+        <!-- JNA - 用于Vosk离线语音识别 -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+        
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
