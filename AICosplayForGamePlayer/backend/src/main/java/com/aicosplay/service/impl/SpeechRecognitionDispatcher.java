@@ -186,7 +186,8 @@ public class SpeechRecognitionDispatcher {
             } catch (Exception e) {
                 logger.severe("语音识别处理过程中发生错误: " + e.getMessage());
                 errorMessage = e.getMessage();
-                throw e;
+                // 不直接抛出异常，而是设置为识别结果为null
+                // throw e;
             }
         } finally {
             // 记录结束时间
@@ -210,6 +211,9 @@ public class SpeechRecognitionDispatcher {
                 logger.warning("保存语音识别历史记录失败: " + e.getMessage());
             }
         }
+        
+        // 如果执行到这里，说明识别失败，返回错误信息而不是抛出异常
+        return null;
     }
     
     /**

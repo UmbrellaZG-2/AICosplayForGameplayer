@@ -2,7 +2,8 @@ import axios from 'axios'
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: 'http://localhost:8080',
+  // 使用相对路径而不是绝对路径
+  baseURL: '',
   timeout: 10000,
   withCredentials: true,
   headers: {
@@ -103,7 +104,9 @@ export const authAPI = {
   // 获取当前用户信息
   getUserInfo: () => api.get('/api/auth/user'),
   // 更新用户信息
-  updateUserInfo: (userData) => api.put('/api/auth/user', userData)
+  updateUserInfo: (userData) => api.put('/api/auth/user', userData),
+  // 新增logout方法
+  logout: () => api.post('/api/auth/logout')
 }
 
 // 对话相关API
@@ -116,7 +119,12 @@ export const conversationAPI = {
       return api.post('/api/conversations', title);
     }
     console.log('conversationAPI.create - 调用方式(新版):', { title, characterId })
-    return api.post('/api/conversations', { title, characterId });
+    
+    // 确保characterId始终传递给后端，即使为空
+    return api.post('/api/conversations', {
+      title: title,
+      characterId: characterId
+    });
   },
   // 获取用户的所有对话
   getAll: () => {
@@ -200,6 +208,13 @@ export const speechAPI = {
         'Content-Type': 'multipart/form-data'
       },
       timeout: 30000 // 语音识别可能需要更长时间
+    }).then(response => {
+      // 检查后端返回的响应是否包含错误信息
+      if (response.data && response.data.code !== 200) {
+        // 如果包含错误信息，抛出一个带有错误信息的异常
+        throw new Error(response.data.message || '语音识别失败，请重试')
+      }
+      return response
     })
   },
   // 检查语音识别服务的健康状态

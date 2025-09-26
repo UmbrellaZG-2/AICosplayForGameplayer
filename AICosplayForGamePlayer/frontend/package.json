@@ -12,6 +12,7 @@
     "axios": "^1.6.2",
     "vue": "^3.3.11",
     "vue-router": "^4.2.5",
+    "vue3-cropper": "^0.4.0",
     "wavesurfer.js": "^7.10.2"
   },
   "devDependencies": {

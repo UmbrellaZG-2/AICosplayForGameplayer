@@ -51,6 +51,14 @@ public class AuthController {
     @Autowired
     private UserService userService;
 
+    // 退出登录接口
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<?>> logout() {
+        // 清除用户登录状态
+        UserContext.clearLoginStatus();
+        return ResponseEntity.ok(ApiResponse.success("退出登录成功"));
+    }
+    
     // 验证用户名和邮箱是否匹配
     @PostMapping("/verify-user-email")
     public ResponseEntity<ApiResponse<?>> verifyUserEmail(@RequestBody VerifyUserEmailRequest request) {

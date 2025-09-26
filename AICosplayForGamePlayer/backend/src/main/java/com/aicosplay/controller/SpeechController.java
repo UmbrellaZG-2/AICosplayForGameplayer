@@ -2,6 +2,7 @@ package com.aicosplay.controller;
 
 import com.aicosplay.exception.BusinessException;
 import com.aicosplay.model.ApiResponse;
+import com.aicosplay.constant.ErrorCode;
 import com.aicosplay.service.impl.SpeechRecognitionDispatcher;
 import com.aicosplay.service.impl.TextToSpeechService;
 import com.aicosplay.utils.UserContext;
@@ -50,6 +51,11 @@ public class SpeechController {
         
         // 调用语音识别调度器进行识别，并传递用户ID
         String recognizedText = speechRecognitionDispatcher.recognizeSpeech(audioFile, username, "");
+        
+        // 检查识别结果是否为null（识别失败）
+        if (recognizedText == null) {
+            return ResponseEntity.ok(ApiResponse.error(ErrorCode.AUDIO_ERROR, "语音识别失败，请重试"));
+        }
         
         // 返回识别结果
         return ResponseEntity.ok(ApiResponse.success(recognizedText));

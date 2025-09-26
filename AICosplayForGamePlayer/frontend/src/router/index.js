@@ -3,6 +3,8 @@ import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
 import ChatPage from '../views/NewChatPage.vue'
 import AboutPage from '../views/AboutPage.vue'
+import UserProfilePage from '../views/UserProfilePage.vue'
+import RoleSelectionPage from '../views/RoleSelectionPage.vue'
 
 const routes = [
   {
@@ -32,6 +34,22 @@ const routes = [
     path: '/about',
     name: 'about',
     component: AboutPage
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: UserProfilePage,
+    meta: {
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/role-selection',
+    name: 'roleSelection',
+    component: RoleSelectionPage,
+    meta: {
+      requiresAuth: true
+    }
   }
 ]
 

@@ -43,7 +43,7 @@
       </div>
       
       <div class="sidebar-footer" v-if="!isSidebarCollapsed">
-        <div class="user-info">
+        <div class="user-info" @click="navigateToProfile">
           <div class="avatar">👤</div>
           <div class="user-details">
             <div class="username">{{ username }}</div>
@@ -92,14 +92,14 @@
           <div class="message-avatar">
             <div v-if="message.senderType === 1" class="avatar">👤</div>
             <div v-else class="avatar">
-              <img 
-                v-if="getCharacterAvatar()" 
-                :src="getCharacterAvatar()" 
-                :alt="getCharacterName()"
-                @error="handleAvatarError"
-              >
-              <span v-else>🤖</span>
-            </div>
+                <img 
+                  v-if="getCharacterAvatar()"
+                  :src="getCharacterAvatar() || ''" 
+                  :alt="getCharacterName()"
+                  @error="handleAvatarError"
+                >
+                <span v-else>🤖</span>
+              </div>
           </div>
           <div class="message-content">
             <div class="message-text">{{ message.content }}</div>
@@ -111,14 +111,14 @@
         <div v-if="isAIThinking" class="message ai-message">
           <div class="message-avatar">
             <div class="avatar">
-              <img 
-                v-if="getCharacterAvatar()" 
-                :src="getCharacterAvatar()" 
-                :alt="getCharacterName()"
-                @error="handleAvatarError"
-              >
-              <span v-else>🤖</span>
-            </div>
+                <img 
+                  v-if="getCharacterAvatar()"
+                  :src="getCharacterAvatar() || ''" 
+                  :alt="getCharacterName()"
+                  @error="handleAvatarError"
+                >
+                <span v-else>🤖</span>
+              </div>
           </div>
           <div class="message-content">
             <div class="thinking-indicator">
@@ -149,6 +149,15 @@
           ></textarea>
           <div class="input-actions">
             <button 
+              class="record-btn"
+              :class="{ recording: isRecording }"
+              :disabled="isAIThinking"
+              @click="toggleRecording"
+              title="录制语音"
+            >
+              {{ isRecording ? '⏹️' : '🎤' }}
+            </button>
+            <button 
               class="send-btn" 
               :disabled="!inputMessage.trim() || isAIThinking"
               @click="sendMessage"
@@ -158,7 +167,7 @@
           </div>
         </div>
         <div class="input-tips">
-          Enter 发送，Shift + Enter 换行
+          Enter 发送，Shift + Enter 换行，🎤 录制语音
         </div>
       </div>
     </div>
@@ -166,39 +175,63 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { conversationAPI, gameCharacterAPI, userAPI } from '../utils/api.js'
+import { conversationAPI, gameCharacterAPI, userAPI, speechAPI } from '../utils/api.js'
+import { getCharacterAvatarPath } from '../utils/characterUtils.js'
 
 const router = useRouter()
 
 // 状态管理
-const isSidebarCollapsed = ref(false)
-const conversations = ref([])
 const messages = ref([])
-const currentConversationId = ref(null)
 const currentConversation = ref(null)
-const inputMessage = ref('')
-const isAIThinking = ref(false)
-const chatMessagesRef = ref(null)
+const currentConversationId = ref(null)
+const conversations = ref([])
 const characters = ref([])
-
-// 用户信息
+const inputMessage = ref('')
+const isSending = ref(false)
 const username = ref('用户')
+const isLoading = ref(false)
+const isRecording = ref(false)
+const isSidebarCollapsed = ref(false)
+const recognition = ref(null)
+const isMobile = ref(window.innerWidth <= 768)
+const chatMessagesRef = ref(null)
 
-// 切换侧边栏
+// 切换侧边栏折叠状态
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
 
-// 格式化时间
-const formatTime = (dateString) => {
+// 处理窗口大小变化
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 768
+  if (isMobile.value) {
+    isSidebarCollapsed.value = true
+  }
+}
+
+// 添加事件监听器
+window.addEventListener('resize', handleResize)
+
+// 计算属性
+const displayedMessages = computed(() => {
+  return messages.value.map(msg => ({
+    ...msg,
+    timestamp: formatMessageTime(msg.createdAt),
+    date: formatMessageDate(msg.createdAt)
+  }))
+})
+
+// 格式化消息日期
+const formatMessageDate = (dateString) => {
   const date = new Date(dateString)
   const now = new Date()
-  const diffInDays = Math.floor((now - date) / (1000 * 60 * 60 * 24))
+  const diffInTime = now - date
+  const diffInDays = Math.floor(diffInTime / (1000 * 60 * 60 * 24))
   
   if (diffInDays === 0) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return '今天'
   } else if (diffInDays === 1) {
     return '昨天'
   } else if (diffInDays < 7) {
@@ -226,7 +259,8 @@ const getCharacterAvatar = () => {
   const character = getCharacterById(currentConversation.value.characterId)
   if (!character?.name) return null
   
-  return `/resource/Character/${character.name}.jpg`
+  // 使用工具函数根据角色名称获取头像路径
+  return getCharacterAvatarPath(character.name)
 }
 
 // 获取角色名称
@@ -274,20 +308,9 @@ const scrollToBottom = () => {
 }
 
 // 创建新对话
-const createNewChat = async () => {
-  try {
-    // 调用后端API创建新对话
-    const response = await conversationAPI.create('新对话')
-    const newConversation = response.data
-    
-    // 更新对话列表
-    conversations.value.unshift(newConversation)
-    
-    // 切换到新对话
-    await switchConversation(newConversation.id)
-  } catch (error) {
-    console.error('创建新对话失败:', error)
-  }
+const createNewChat = () => {
+  // 导航到角色选择页面
+  router.push('/role-selection');
 }
 
 // 切换对话
@@ -298,6 +321,11 @@ const switchConversation = async (id) => {
   await loadMessages(id)
 }
 
+// 导航到用户个人资料页面
+const navigateToProfile = () => {
+  router.push('/profile')
+}
+
 // 加载消息
 const loadMessages = async (conversationId) => {
   try {
@@ -306,102 +334,167 @@ const loadMessages = async (conversationId) => {
     // 调用后端API获取消息
     const response = await conversationAPI.getMessages(conversationId)
     messages.value = response.data || []
+    
+    // 滚动到底部
     scrollToBottom()
   } catch (error) {
     console.error('加载消息失败:', error)
-    messages.value = []
-  }
-}
-
-// 删除对话
-const deleteConversation = async (id) => {
-  if (confirm('确定要删除这个对话吗？')) {
-    try {
-      // 调用后端API删除对话
-      await conversationAPI.delete(id)
-      
-      // 更新本地状态
-      conversations.value = conversations.value.filter(c => c.id !== id)
-      
-      // 如果删除的是当前对话，清空当前对话
-      if (currentConversationId.value === id) {
-        currentConversationId.value = null
-        currentConversation.value = null
-        messages.value = []
-      }
-    } catch (error) {
-      console.error('删除对话失败:', error)
-    }
-  }
-}
-
-// 删除当前对话
-const deleteCurrentConversation = async () => {
-  if (currentConversationId.value) {
-    await deleteConversation(currentConversationId.value)
-  }
-}
-
-// 处理回车键
-const handleEnterKey = (event) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    sendMessage()
   }
 }
 
 // 发送消息
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || isAIThinking.value || !currentConversationId.value) return
+  // 验证输入
+  if (!inputMessage.value.trim() || isSending.value) {
+    return
+  }
   
-  const messageContent = inputMessage.value.trim()
-  inputMessage.value = ''
+  if (!currentConversationId.value) {
+    console.error('没有选择对话')
+    return
+  }
   
   try {
-    // 添加用户消息到界面
+    isSending.value = true
+    const messageContent = inputMessage.value.trim()
+    
+    // 添加用户消息到本地
     const userMessage = {
-      id: Date.now(),
+      id: Date.now(), // 临时ID
       content: messageContent,
-      senderType: 1, // 用户
+      sender: 'user',
       createdAt: new Date().toISOString()
     }
-    
     messages.value.push(userMessage)
+    
+    // 清空输入框
+    inputMessage.value = ''
+    
+    // 滚动到底部
     scrollToBottom()
     
-    // 显示AI思考状态
-    isAIThinking.value = true
-    scrollToBottom()
-    
-    // 调用后端API发送消息
+    // 调用API发送消息
     const response = await conversationAPI.addMessage(currentConversationId.value, {
       content: messageContent,
-      senderType: 1 // 用户
+      sender: 'user'
     })
     
-    // 获取AI回复
-    isAIThinking.value = false
-    
-    if (response && response.data) {
-      messages.value.push({
-        id: response.data.id,
-        content: response.data.content,
-        senderType: 0, // AI
-        createdAt: response.data.createdAt
-      })
+    // 检查响应是否正常
+    if (response && response.code === 200 && response.data) {
+      // 用服务器返回的消息替换本地临时消息
+      const index = messages.value.findIndex(msg => msg.id === userMessage.id)
+      if (index !== -1) {
+        messages.value[index] = response.data
+      }
+      
+      // 检查是否有AI回复
+      if (response.data && response.data.reply) {
+        messages.value.push(response.data.reply)
+      }
     }
-    
-    scrollToBottom()
   } catch (error) {
     console.error('发送消息失败:', error)
-    isAIThinking.value = false
+    
+    // 显示错误提示
+    alert('发送消息失败，请稍后重试')
+    
+    // 回滚：移除临时添加的消息
+    const index = messages.value.findIndex(msg => msg.sender === 'user' && msg.id === userMessage?.id)
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
+    
+    // 恢复输入框内容
+    if (userMessage) {
+      inputMessage.value = userMessage.content
+    }
+  } finally {
+    isSending.value = false
+    scrollToBottom()
   }
+}
+
+// 处理发送失败
+const handleSendFailed = () => {
+  console.error('发送消息失败')
+  alert('发送消息失败，请检查网络连接或稍后重试')
+}
+
+// 切换录音状态
+const toggleRecording = async () => {
+  if (!recognition.value) {
+    // 检查浏览器是否支持语音识别
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('您的浏览器不支持语音识别功能')
+      return
+    }
+    
+    // 初始化语音识别
+    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
+    recognition.value = new SpeechRecognition()
+    recognition.value.continuous = false
+    recognition.value.interimResults = false
+    recognition.value.lang = 'zh-CN' // 设置为中文
+    
+    // 识别开始事件
+    recognition.value.onstart = () => {
+      console.log('语音识别已开始')
+      isRecording.value = true
+    }
+    
+    // 识别结束事件
+    recognition.value.onend = () => {
+      console.log('语音识别已结束')
+      isRecording.value = false
+    }
+    
+    // 识别结果事件
+    recognition.value.onresult = (event) => {
+      const transcript = event.results[0][0].transcript
+      inputMessage.value = transcript
+      console.log('识别结果:', transcript)
+    }
+    
+    // 识别错误事件
+    recognition.value.onerror = (event) => {
+      console.error('语音识别错误:', event.error)
+      isRecording.value = false
+      alert('语音识别失败，请重试')
+    }
+  }
+  
+  if (isRecording.value) {
+    // 停止录音
+    recognition.value.stop()
+    isRecording.value = false
+  } else {
+    // 开始录音
+    try {
+      await startRecording()
+    } catch (error) {
+      console.error('开始录音失败:', error)
+    }
+  }
+}
+
+// 开始录音
+const startRecording = () => {
+  return new Promise((resolve, reject) => {
+    try {
+      recognition.value.start()
+      isRecording.value = true
+      resolve()
+    } catch (error) {
+      console.error('开始录音失败:', error)
+      reject(error)
+    }
+  })
 }
 
 // 退出登录
 const handleLogout = async () => {
   try {
-    // 调用后端退出登录API
+    // 调用退出登录API
     await userAPI.logout()
     
     // 清除本地存储
@@ -442,12 +535,71 @@ const loadCharacters = async () => {
 onMounted(async () => {
   await loadConversations()
   await loadCharacters()
+  await loadUserInfo()
+  
+  // 检查是否从角色选择页面返回并有选择的角色
+  await checkSelectedRole()
   
   // 如果有对话，加载第一个对话的消息
   if (conversations.value.length > 0) {
     await switchConversation(conversations.value[0].id)
   }
 })
+
+// 检查是否有选择的角色并创建对话
+const checkSelectedRole = async () => {
+  const selectedRoleId = localStorage.getItem('selectedRoleId')
+  const selectedRoleName = localStorage.getItem('selectedRoleName')
+  
+  if (selectedRoleId && selectedRoleName) {
+    try {
+      // 创建新对话
+      const response = await conversationAPI.create(selectedRoleName, selectedRoleId)
+      
+      if (response && response.code === 200 && response.data) {
+        // 清除本地存储中的角色信息
+        localStorage.removeItem('selectedRoleId')
+        localStorage.removeItem('selectedRoleName')
+        
+        // 更新当前对话
+        currentConversationId.value = response.data.id
+        currentConversation.value = response.data
+        
+        // 重新加载对话列表
+        await loadConversations()
+        
+        // 加载新对话的消息
+        await loadMessages(response.data.id)
+      }
+    } catch (error) {
+      console.error('创建对话失败:', error)
+    }
+  }
+}
+
+// 加载用户信息
+const loadUserInfo = async () => {
+  try {
+    // 首先检查本地存储是否有用户信息
+    const storedUserInfo = localStorage.getItem('userInfo')
+    if (storedUserInfo) {
+      const userInfo = JSON.parse(storedUserInfo)
+      username.value = userInfo.username || '用户'
+      return
+    }
+    
+    // 如果本地存储没有，从API获取
+    const response = await userAPI.getUserInfo()
+    if (response.code === 200 && response.data && response.data.username) {
+      username.value = response.data.username
+      // 将获取到的用户信息保存到localStorage
+      localStorage.setItem('userInfo', JSON.stringify({ username: response.data.username }))
+    }
+  } catch (error) {
+    console.error('加载用户信息失败:', error)
+    // 如果失败，保持默认值
+  }
+}
 </script>
 
 <style scoped>
@@ -630,6 +782,14 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   margin-bottom: 16px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.user-info:hover {
+  background-color: #333;
 }
 
 .avatar {
@@ -923,6 +1083,32 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   padding: 0 16px 16px;
+  gap: 8px;
+}
+
+.record-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.record-btn:hover:not(:disabled) {
+  background-color: #d32f2f;
+}
+
+.record-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.record-btn.recording {
+  background-color: #ffeb3b;
+  color: #333;
 }
 
 .send-btn {

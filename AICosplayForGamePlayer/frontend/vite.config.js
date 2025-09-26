@@ -27,7 +27,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '/Character': fileURLToPath(new URL('../../image/Character', import.meta.url))
+      '/Character': fileURLToPath(new URL('./resource/Character', import.meta.url))
     }
   },
   // 禁用默认的publicDir配置
