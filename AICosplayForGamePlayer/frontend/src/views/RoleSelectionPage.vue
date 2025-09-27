@@ -1,9 +1,10 @@
 <template>
-  <div class="role-selection-container">
-    <div class="header">
-      <h1>选择角色</h1>
-      <button class="back-button" @click="navigateBack">← 返回</button>
-    </div>
+  <div class="app-container">
+    <div class="role-selection-container">
+      <div class="header">
+        <h1>选择角色</h1>
+        <button class="back-button" @click="navigateBack">← 返回</button>
+      </div>
     
     <!-- 预设角色选择区 -->
     <div class="section">
@@ -16,8 +17,8 @@
           @click="selectPresetRole(presetRole.id, presetRole.name)"
         >
         <div class="role-avatar">
-            <img :src="presetRole.avatar" :alt="presetRole.name" @error="handleAvatarError">
-            <span v-if="!presetRole.avatar">👤</span>
+            <img v-if="presetRole.avatar" :src="presetRole.avatar" :alt="presetRole.name" @error="handleAvatarError">
+            <span v-else>👤</span>
           </div>
           <div class="role-info">
             <div class="role-name">{{ presetRole.name }}</div>
@@ -58,6 +59,16 @@
         <span class="plus-icon">+</span> 创建新角色
       </button>
     </div>
+    
+    <!-- 全局页脚 -->
+    <footer class="global-footer">
+      <div class="footer-content">
+        <div class="footer-links">
+          <a href="/about" class="footer-link">关于我们</a>
+        </div>
+        <p class="footer-copyright">© 2025 AICosplayForGamePlayer</p>
+      </div>
+    </footer>
     
     <!-- 创建新角色表单（弹窗） -->
     <div v-if="showCreateForm" class="modal-overlay" @click="closeCreateForm">
@@ -114,6 +125,7 @@
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <script setup>
@@ -245,13 +257,56 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.app-container {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .role-selection-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-  min-height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 全局页脚样式 */
+.global-footer {
+  background-color: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  padding: 16px 20px;
+  text-align: center;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.footer-links {
+  margin-bottom: 8px;
+}
+
+.footer-link {
+  color: #6c757d;
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.footer-link:hover {
+  color: #007bff;
+}
+
+.footer-copyright {
+  color: #adb5bd;
+  font-size: 12px;
+  margin: 0;
 }
 
 .header {
@@ -555,6 +610,10 @@ onMounted(() => {
 @media (max-width: 768px) {
   .role-selection-container {
     padding: 15px;
+  }
+  
+  .global-footer {
+    padding: 12px 15px;
   }
   
   .header h1 {

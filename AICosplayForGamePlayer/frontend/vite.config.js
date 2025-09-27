@@ -5,7 +5,23 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  // 配置插件
+  plugins: [
+    vue(),
+    // 自定义插件处理资源路径
+    {
+      name: 'resource-alias',
+      configureServer(server) {
+        // 添加中间件处理/Character路径请求
+        server.middlewares.use('/Character', (req, res, next) => {
+          // 不需要额外处理，因为publicDir已经设置为'resource'
+          // 直接让Vite处理请求
+          next();
+        });
+      }
+    }
+  ],
+  
   server: {
     port: 3000,
     proxy: {
@@ -23,13 +39,14 @@ export default defineConfig({
       ]
     }
   },
+  
   // 配置路径别名
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '/Character': fileURLToPath(new URL('./resource/Character', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
-  // 禁用默认的publicDir配置
-  publicDir: false
+  
+  // 配置静态资源目录
+  publicDir: 'resource'
 })

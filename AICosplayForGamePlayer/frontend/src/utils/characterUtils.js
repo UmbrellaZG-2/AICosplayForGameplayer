@@ -14,27 +14,33 @@ export const getCharacterAvatarPath = (characterName) => {
     return null;
   }
   
-  // 构建基础路径
+  // 构建基础路径，使用Vite配置的别名路径
   const basePath = '/Character/';
   
   // 返回基于名称的图像路径
-  // 注意：这里不添加扩展名，让浏览器自动匹配存在的文件
-  // 在实际使用时，需要处理图像加载失败的情况
   return `${basePath}${characterName}`;
 };
 
 /**
  * 检查角色图像是否存在
- * 由于浏览器安全限制，无法直接检查文件是否存在
- * 此函数提供了一种异步方式来验证图像路径
  * @param {string} imagePath - 图像路径
  * @returns {Promise<boolean>} - 图像是否存在
  */
-export const checkCharacterImageExists = (imagePath) => {
+export const checkCharacterImageExists = async (imagePath) => {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
+    
+    // 图像加载成功
+    img.onload = () => {
+      resolve(true);
+    };
+    
+    // 图像加载失败
+    img.onerror = () => {
+      resolve(false);
+    };
+    
+    // 设置图像路径
     img.src = imagePath;
   });
 };
@@ -48,6 +54,7 @@ export const checkCharacterImageExists = (imagePath) => {
 export const getCharacterAvatarPathWithExtension = async (characterName) => {
   if (!characterName) return null;
   
+  // 使用Vite配置的别名路径
   const basePath = '/Character/';
   
   for (const ext of IMAGE_EXTENSIONS) {
@@ -63,6 +70,26 @@ export const getCharacterAvatarPathWithExtension = async (characterName) => {
 };
 
 /**
+ * 同步获取带扩展名的角色头像路径（不检查文件是否存在）
+ * 直接构建路径，适合前端img标签的onerror机制处理加载失败
+ * @param {string} characterName - 角色名称
+ * @param {string} extension - 文件扩展名（可选）
+ * @returns {string} - 头像路径
+ */
+export const getCharacterAvatarPathSync = (characterName, extension = 'jpg') => {
+  if (!characterName) return null;
+  
+  // 确保扩展名以点开头
+  const ext = extension.startsWith('.') ? extension : `.${extension}`;
+  
+  // 使用Vite配置的别名路径
+  const basePath = '/Character/';
+  
+  // 直接返回构建的路径
+  return `${basePath}${characterName}${ext}`;
+};
+
+/**
  * 为角色数组添加头像路径
  * @param {Array} characters - 角色对象数组
  * @returns {Array} - 添加了头像路径的角色对象数组
@@ -72,8 +99,16 @@ export const addAvatarPathsToCharacters = (characters) => {
     return characters;
   }
   
+  // 定义已知的角色头像文件映射，键为角色名称，值为文件扩展名
+  const knownAvatarExtensions = {
+    '赛马娘无声铃鹿': 'jpg',
+    '魔女多萝西': 'png',
+    '魔法少女莱万提亚': 'png'
+  };
+  
   return characters.map(character => ({
     ...character,
-    avatar: getCharacterAvatarPath(character.name) || character.avatar
+    // 使用同步函数添加带正确扩展名的头像路径
+    avatar: getCharacterAvatarPathSync(character.name, knownAvatarExtensions[character.name] || 'jpg') || character.avatar
   }));
 };

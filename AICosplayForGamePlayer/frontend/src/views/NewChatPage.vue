@@ -30,7 +30,7 @@
           <div class="conversation-icon">💬</div>
           <div class="conversation-info" v-if="!isSidebarCollapsed">
             <div class="conversation-title">{{ getConversationTitle(conversation) }}</div>
-            <div class="conversation-time">{{ formatTime(conversation.updatedAt) }}</div>
+            <div class="conversation-time">{{ formatMessageTime(conversation.updatedAt) }}</div>
           </div>
           <button 
             v-if="!isSidebarCollapsed"
@@ -56,6 +56,12 @@
       </div>
     </div>
     
+    <!-- 侧边栏遮罩层 -->
+    <div 
+      class="sidebar-overlay" 
+      :class="{ show: isMobile.value && !isSidebarCollapsed }"
+      @click="toggleSidebar"
+    ></div>
     <!-- 主聊天区域 -->
     <div class="main-content">
       <div class="chat-header">
@@ -98,7 +104,7 @@
                   :alt="getCharacterName()"
                   @error="handleAvatarError"
                 >
-                <span v-else>🤖</span>
+                <div v-else class="default-avatar"></div>
               </div>
           </div>
           <div class="message-content">
@@ -117,7 +123,7 @@
                   :alt="getCharacterName()"
                   @error="handleAvatarError"
                 >
-                <span v-else>🤖</span>
+                <div v-else class="default-avatar"></div>
               </div>
           </div>
           <div class="message-content">
@@ -178,7 +184,7 @@
 import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { conversationAPI, gameCharacterAPI, userAPI, speechAPI } from '../utils/api.js'
-import { getCharacterAvatarPath } from '../utils/characterUtils.js'
+import { getCharacterAvatarPath, getCharacterAvatarPathWithExtension, getCharacterAvatarPathSync } from '../utils/characterUtils.js'
 
 const router = useRouter()
 
@@ -197,16 +203,30 @@ const isSidebarCollapsed = ref(false)
 const recognition = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
 const chatMessagesRef = ref(null)
+// 存储当前角色头像路径的响应式变量
+const currentCharacterAvatar = ref(null)
 
 // 切换侧边栏折叠状态
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
+  
+  // 确保在移动端点击菜单按钮时侧边栏可以正常显示
+  if (isMobile.value && !isSidebarCollapsed.value) {
+    // 防止背景内容滚动
+    document.body.style.overflow = 'hidden';
+  } else if (isMobile.value && isSidebarCollapsed.value) {
+    // 恢复背景内容滚动
+    document.body.style.overflow = 'auto';
+  }
 }
 
 // 处理窗口大小变化
 const handleResize = () => {
+  const wasMobile = isMobile.value
   isMobile.value = window.innerWidth <= 768
-  if (isMobile.value) {
+  
+  // 只在从桌面切换到移动设备时设置初始状态，不覆盖用户的操作
+  if (!wasMobile && isMobile.value) {
     isSidebarCollapsed.value = true
   }
 }
@@ -249,18 +269,59 @@ const formatMessageTime = (dateString) => {
 
 // 处理头像加载错误
 const handleAvatarError = (event) => {
-  event.target.style.display = 'none'
+  const img = event.target;
+  const characterName = getCharacterName();
+  
+  console.log('Avatar error:', { currentSrc: img.src, characterName });
+  
+  // 使用同步函数尝试加载另一种格式
+  if (img.src.endsWith('.jpg')) {
+    const pngSrc = getCharacterAvatarPathSync(characterName, 'png');
+    console.log('Trying PNG format:', pngSrc);
+    img.src = pngSrc;
+  } else {
+    // 所有格式都加载失败时隐藏图片
+    console.log('All formats failed, hiding image');
+    img.style.display = 'none';
+  }
+}
+
+// 更新当前角色头像路径
+const updateCurrentCharacterAvatar = () => {
+  if (!currentConversation.value?.characterId) {
+    console.log('No character ID in current conversation');
+    currentCharacterAvatar.value = null;
+    return;
+  }
+  
+  const character = getCharacterById(currentConversation.value.characterId);
+  if (!character?.name) {
+    console.log('No character name found for ID:', currentConversation.value.characterId);
+    currentCharacterAvatar.value = null;
+    return;
+  }
+  
+  console.log('Updating avatar for character:', character.name);
+  
+  // 引入已知的角色头像文件扩展名映射
+  const knownAvatarExtensions = {
+    '赛马娘无声铃鹿': 'jpg',
+    '魔女多萝西': 'png',
+    '魔法少女莱万提亚': 'png'
+  };
+  
+  // 从映射中获取正确的扩展名，如果没有则使用默认值
+  const extension = knownAvatarExtensions[character.name] || 'jpg';
+  console.log(`Using extension ${extension} for character ${character.name}`);
+  
+  // 使用同步函数获取头像路径，传入正确的扩展名
+  currentCharacterAvatar.value = getCharacterAvatarPathSync(character.name, extension);
+  console.log('Generated avatar path using sync utility:', currentCharacterAvatar.value);
 }
 
 // 获取角色头像
 const getCharacterAvatar = () => {
-  if (!currentConversation.value?.characterId) return null
-  
-  const character = getCharacterById(currentConversation.value.characterId)
-  if (!character?.name) return null
-  
-  // 使用工具函数根据角色名称获取头像路径
-  return getCharacterAvatarPath(character.name)
+  return currentCharacterAvatar.value;
 }
 
 // 获取角色名称
@@ -319,6 +380,8 @@ const switchConversation = async (id) => {
   currentConversation.value = conversations.value.find(c => c.id === id)
   // 加载对话消息
   await loadMessages(id)
+  // 更新当前角色头像
+  await updateCurrentCharacterAvatar()
 }
 
 // 导航到用户个人资料页面
@@ -526,6 +589,10 @@ const loadCharacters = async () => {
     // 调用后端API获取角色列表
     const response = await gameCharacterAPI.getAll()
     characters.value = response.data || []
+    // 如果有当前对话，更新头像
+    if (currentConversation.value?.characterId) {
+      await updateCurrentCharacterAvatar()
+    }
   } catch (error) {
     console.error('加载角色列表失败:', error)
   }
@@ -599,6 +666,53 @@ const loadUserInfo = async () => {
     console.error('加载用户信息失败:', error)
     // 如果失败，保持默认值
   }
+}
+
+// 删除指定对话
+const deleteConversation = async (conversationId) => {
+  try {
+    // 询问用户确认删除
+    if (!confirm('确定要删除这个对话吗？')) {
+      return
+    }
+    
+    // 调用API删除对话
+    const response = await conversationAPI.delete(conversationId)
+    
+    if (response && response.code === 200) {
+      // 从本地对话列表中移除
+      const index = conversations.value.findIndex(c => c.id === conversationId)
+      if (index !== -1) {
+        conversations.value.splice(index, 1)
+      }
+      
+      // 如果删除的是当前对话，清除当前对话信息
+      if (currentConversationId.value === conversationId) {
+        currentConversationId.value = null
+        currentConversation.value = null
+        messages.value = []
+        
+        // 如果还有其他对话，自动切换到第一个
+        if (conversations.value.length > 0) {
+          await switchConversation(conversations.value[0].id)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('删除对话失败:', error)
+    alert('删除对话失败，请稍后重试')
+  }
+}
+
+// 删除当前对话
+const deleteCurrentConversation = async () => {
+  if (!currentConversationId.value) {
+    alert('没有选择要删除的对话')
+    return
+  }
+  
+  // 调用删除对话函数
+  await deleteConversation(currentConversationId.value)
 }
 </script>
 
@@ -1167,17 +1281,51 @@ const loadUserInfo = async () => {
   margin-bottom: 24px;
 }
 
+.default-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #666;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .sidebar {
-    position: absolute;
-    z-index: 100;
+    position: fixed; /* 改为fixed定位，确保在最上层 */
+    z-index: 1000; /* 增加z-index确保覆盖其他内容 */
     height: 100%;
+    transition: transform 0.3s ease, width 0.3s ease; /* 添加transform过渡 */
   }
   
   .sidebar.collapsed {
     width: 0;
     overflow: hidden;
+    transform: translateX(-100%); /* 添加transform确保完全移出屏幕 */
+  }
+  
+  .sidebar:not(.collapsed) {
+    transform: translateX(0); /* 确保显示时回到原位 */
+  }
+  
+  /* 添加遮罩层 */
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    display: none;
+  }
+  
+  .sidebar-overlay.show {
+    display: block;
   }
 }
 </style>
