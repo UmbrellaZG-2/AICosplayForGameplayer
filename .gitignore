@@ -1,0 +1,46 @@
+# 忽略临时仓库目录
+temp_repo/
+
+# 忽略IDE相关文件
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 忽略操作系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略日志文件
+*.log
+logs/
+
+# 忽略数据库文件
+*.db
+*.sqlite
+
+# 忽略运行时数据
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 忽略环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 忽略构建输出目录
+build/
+out/
+
+# 忽略Vosk模型目录（如果包含大文件）
+vosk-model-small-cn-0.22/
+
+# 忽略SQL脚本（可选，如果不需要提交）
+*.sql
