@@ -158,7 +158,14 @@ const startRecording = () => {
     });
   } catch (error) {
     console.error('开始录音过程中出现错误:', error)
-    alert('启动录音失败: ' + error.message)
+    
+    // 特殊处理：如果是Recorder相关的错误
+    if (error && error.toString().includes('Recorder')) {
+      console.warn('检测到Recorder库错误，可能是编码器问题...');
+      alert('录音初始化失败，请确保已正确加载所需的编码器');
+    } else {
+      alert('启动录音失败: ' + error.message)
+    }
     emit('recordingStatusChange', false)
   }
 }

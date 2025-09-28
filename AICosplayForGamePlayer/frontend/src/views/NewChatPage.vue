@@ -260,8 +260,18 @@ const handleRecordingComplete = async (audioBlob, duration) => {
   try {
     if (!currentConversationId.value) {
       console.error('没有选择对话')
+      alert('请先选择或创建一个对话')
       return
     }
+
+    // 验证音频数据
+    if (!audioBlob || audioBlob.size === 0) {
+      console.error('无效的音频数据')
+      alert('录音失败，请重试')
+      return
+    }
+
+    console.log('录音完成，音频大小:', audioBlob.size, '字节，时长:', duration, '秒')
 
     // 创建临时消息
     const tempMessage = {
@@ -270,7 +280,8 @@ const handleRecordingComplete = async (audioBlob, duration) => {
       duration: Math.round(duration),
       sender: 'user',
       senderType: 1,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      status: 'sending' // 添加状态标识
     }
 
     // 添加到本地消息列表
@@ -283,30 +294,68 @@ const handleRecordingComplete = async (audioBlob, duration) => {
     formData.append('conversationId', currentConversationId.value)
     formData.append('sender', 'user')
 
-    // 调用API发送语音消息
-    const response = await speechAPI.transcribeAudio(formData)
-    
-    if (response && response.code === 200 && response.data) {
-      // 用服务器返回的消息替换本地临时消息
-      const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
-      if (index !== -1) {
-        messages.value[index] = response.data
-      }
+    console.log('准备发送语音消息到对话:', currentConversationId.value)
 
-      // 主动获取完整的消息列表，确保包含AI回复
-      const messagesResponse = await conversationAPI.getMessages(currentConversationId.value)
-      if (messagesResponse && messagesResponse.code === 200 && messagesResponse.data) {
-        messages.value = messagesResponse.data
+    // 调用API发送语音消息
+    try {
+      const response = await speechAPI.transcribeAudio(formData)
+      
+      console.log('语音消息发送成功，响应:', response)
+      
+      if (response && response.code === 200 && response.data) {
+        // 用服务器返回的消息替换本地临时消息
+        const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
+        if (index !== -1) {
+          messages.value[index] = {
+            ...response.data,
+            status: 'sent' // 更新状态
+          }
+        }
+
+        // 主动获取完整的消息列表，确保包含AI回复
+        try {
+          const messagesResponse = await conversationAPI.getMessages(currentConversationId.value)
+          if (messagesResponse && messagesResponse.code === 200 && messagesResponse.data) {
+            messages.value = messagesResponse.data
+          }
+        } catch (getMessagesError) {
+          console.error('获取消息列表失败:', getMessagesError)
+          // 不影响主流程，继续执行
+        }
+      } else {
+        throw new Error('服务器返回无效响应: ' + JSON.stringify(response))
       }
+    } catch (apiError) {
+      console.error('语音消息API调用失败:', apiError)
+      
+      // 为特定错误类型提供更友好的提示
+      let errorMessage = '发送语音消息失败，请稍后重试'
+      if (apiError.response && apiError.response.status === 400) {
+        errorMessage = '语音数据格式不正确，请重新录音'
+      } else if (apiError.response && apiError.response.status === 413) {
+        errorMessage = '音频文件过大，请缩短录音时长'
+      } else if (apiError.response && apiError.response.status === 500) {
+        errorMessage = '服务器错误，请稍后再试'
+      } else if (apiError.message && apiError.message.includes('Network Error')) {
+        errorMessage = '网络连接失败，请检查网络后重试'
+      }
+      
+      throw new Error(errorMessage)
     }
   } catch (error) {
     console.error('发送语音消息失败:', error)
-    alert('发送语音消息失败，请稍后重试')
+    alert(error.message || '发送语音消息失败，请稍后重试')
     
-    // 回滚：移除临时添加的消息
+    // 回滚：移除临时添加的消息或更新状态为失败
     const index = messages.value.findIndex(msg => msg.sender === 'user' && msg.type === 'voice')
     if (index !== -1) {
-      messages.value.splice(index, 1)
+      if (messages.value[index].status === 'sending') {
+        messages.value[index].status = 'failed' // 标记为发送失败
+        // 可以考虑添加重试按钮等UI元素
+      } else {
+        // 如果还没有状态标记，直接移除
+        messages.value.splice(index, 1)
+      }
     }
   } finally {
     scrollToBottom()
@@ -338,6 +387,13 @@ const formatVoiceDuration = (seconds) => {
 // 播放语音消息
 const playVoiceMessage = async (message) => {
   try {
+    // 首先验证消息对象
+    if (!message || typeof message !== 'object') {
+      console.error('播放语音失败: 无效的消息对象');
+      alert('播放语音失败: 消息数据无效');
+      return;
+    }
+    
     // 如果当前正在播放其他语音，先停止
     if (playingVoiceId.value && playingVoiceId.value !== message.id) {
       stopVoicePlayback();
@@ -354,20 +410,62 @@ const playVoiceMessage = async (message) => {
     
     // 如果是AI的语音消息，需要从服务器获取语音数据
     if (message.senderType !== 1) {
-      const audioData = await speechAPI.getSpeechData(message.voiceId);
-      const blob = new Blob([audioData], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(blob);
+      // 验证voiceId是否存在且有效
+      if (!message.voiceId) {
+        console.error('播放语音失败: 语音ID不存在');
+        alert('播放语音失败: 语音数据已丢失');
+        playingVoiceId.value = null;
+        return;
+      }
       
-      // 创建并播放音频
-      const audio = new Audio(audioUrl);
-      audioPlayers.value[message.id] = audio;
+      console.log('尝试获取语音数据，voiceId:', message.voiceId);
       
-      audio.onended = () => {
-        stopVoicePlayback(message.id);
-        URL.revokeObjectURL(audioUrl);
-      };
-      
-      await audio.play();
+      try {
+        const audioData = await speechAPI.getSpeechData(message.voiceId);
+        
+        // 检查返回的数据是否为空
+        if (!audioData || audioData.byteLength === 0) {
+          throw new Error('获取到的音频数据为空');
+        }
+        
+        const blob = new Blob([audioData], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(blob);
+        
+        console.log('成功获取语音数据，大小:', blob.size, '字节');
+        
+        // 创建并播放音频
+        const audio = new Audio(audioUrl);
+        audioPlayers.value[message.id] = audio;
+        
+        audio.onended = () => {
+          stopVoicePlayback(message.id);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        // 处理音频播放错误
+        audio.onerror = (event) => {
+          console.error('音频播放错误:', event);
+          alert('音频文件格式不支持，请重试');
+          stopVoicePlayback(message.id);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        await audio.play();
+      } catch (error) {
+        console.error('获取语音数据失败:', error);
+        // 为特定错误类型提供更友好的提示
+        if (error.response && error.response.status === 400) {
+          alert('语音数据请求无效，请确认语音ID是否正确');
+        } else if (error.response && error.response.status === 404) {
+          alert('语音数据未找到，可能已被删除');
+        } else if (error.response && error.response.status === 500) {
+          alert('服务器错误，请稍后再试');
+        } else {
+          alert('播放语音失败，请重试');
+        }
+        playingVoiceId.value = null;
+        return;
+      }
     } else {
       // 对于用户的语音消息，我们只模拟播放（因为实际音频没有保存）
       setTimeout(() => {
