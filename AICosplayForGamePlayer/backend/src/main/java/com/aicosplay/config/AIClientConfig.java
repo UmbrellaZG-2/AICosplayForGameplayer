@@ -2,12 +2,11 @@ package com.aicosplay.config;
 
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.ai.ollama.OllamaChatClient;
-import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.RestClient;
+
+import com.aicosplay.client.DeepSeekChatClientImpl;
 
 /**
  * Spring AI配置类，用于配置AI聊天客户端和相关组件
@@ -15,29 +14,22 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class AIClientConfig {
 
-    @Value("${spring.ai.ollama.base-url:http://localhost:11434}")
-    private String ollamaBaseUrl;
+    @Value("${spring.ai.deepseek.api-key}")
+    private String apiKey;
 
-    @Value("${spring.ai.ollama.model:llama3}")
-    private String defaultModel;
+    @Value("${spring.ai.deepseek.chat.model:deepseek-chat}")
+    private String model;
 
-    /**
-     * 创建Ollama API客户端
-     */
-    @Bean
-    public OllamaApi ollamaApi() {
-        return new OllamaApi(ollamaBaseUrl);
-    }
+    @Value("${spring.ai.deepseek.chat.temperature:0.7}")
+    private Double temperature;
 
     /**
-     * 创建AI聊天客户端
+     * 创建AI聊天客户端 - 使用自定义的DeepSeek大模型客户端实现
      */
     @Bean
-    public ChatClient chatClient(OllamaApi ollamaApi) {
-        return new OllamaChatClient(ollamaApi);
+    public ChatClient chatClient() {
+        return new DeepSeekChatClientImpl(apiKey, model, temperature);
     }
-
-
 
     /**
      * 创建系统提示模板，用于构建标准化的系统提示

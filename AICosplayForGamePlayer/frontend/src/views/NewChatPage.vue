@@ -256,6 +256,9 @@ const audioPlayers = ref({}) // 存储音频播放器实例
 // 存储当前角色头像路径的响应式变量
 const currentCharacterAvatar = ref(null)
 
+// 当前录音媒体流
+const currentStream = ref(null)
+
 // 格式化语音时长
 const formatVoiceDuration = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -657,12 +660,15 @@ const sendMessage = async () => {
     return
   }
   
+  // 在try-catch外部定义变量以确保作用域正确
+  let userMessage = null
+  const messageContent = inputMessage.value.trim()
+  
   try {
     isSending.value = true
-    const messageContent = inputMessage.value.trim()
     
     // 添加用户消息到本地
-    const userMessage = {
+    userMessage = {
       id: Date.now(), // 临时ID
       content: messageContent,
       sender: 'user',
@@ -759,8 +765,24 @@ const startRecording = async () => {
     }
     
     // 初始化媒体记录器
-    mediaRecorder.value = new MediaRecorder(stream)
+    // 检测浏览器支持的音频格式，优先选择wav，否则使用默认格式
+    let mimeType = 'audio/wav'
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      // 尝试其他常见格式
+      const supportedTypes = ['audio/webm', 'audio/ogg', 'audio/mp4']
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type
+          break
+        }
+      }
+    }
+    
+    mediaRecorder.value = new MediaRecorder(stream, { mimeType })
     audioChunks.value = []
+    
+    // 保存stream到ref中以确保在onstop回调中可以访问
+    currentStream.value = stream
     
     mediaRecorder.value.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -781,18 +803,28 @@ const startRecording = async () => {
       }
       
       isRecording.value = false
-      recordingDuration.value = 0
       
       // 如果有录音数据，处理并发送
       if (audioChunks.value.length > 0) {
-        const audioBlob = new Blob(audioChunks.value, { type: 'audio/wav' })
-        // 这里可以处理录音数据，例如转换为文本或直接发送
-        // 目前暂时保留原有的语音识别逻辑
+        console.log('录音数据块数量:', audioChunks.value.length)
+        console.log('录音持续时间:', recordingDuration.value, '秒')
+        
+        // 使用媒体记录器的实际mimeType创建Blob
+        const audioBlob = new Blob(audioChunks.value, { type: mediaRecorder.value.mimeType })
+        console.log('创建的音频Blob:', audioBlob.size, '字节, 类型:', audioBlob.type)
+        
+        // 处理录音数据
         transcribeAudio(audioBlob)
+      } else {
+        console.error('没有录音数据，可能是录音时间太短或麦克风未接收到声音')
+        alert('未检测到声音，请确保麦克风正常工作且音量足够')
       }
       
       // 关闭媒体流
-      stream.getTracks().forEach(track => track.stop())
+      if (currentStream.value) {
+        currentStream.value.getTracks().forEach(track => track.stop())
+        currentStream.value = null
+      }
       
       // 清理DOM元素
       const recordingOverlay = document.getElementById('recording-overlay')
@@ -994,10 +1026,32 @@ const transcribeAudio = async (audioBlob) => {
     scrollToBottom()
 
     // 发送音频到后端进行语音识别
+    console.log('正在发送音频进行识别，大小:', audioBlob.size, '类型:', audioBlob.type)
     const recognitionResult = await speechAPI.recognize(audioBlob)
-    const textContent = recognitionResult.data?.text || ''
+    console.log('语音识别API返回结果:', recognitionResult)
     
-    if (!textContent.trim()) {
+    // 适配不同的数据格式，确保能获取到识别文本
+    let textContent = ''
+    if (recognitionResult && recognitionResult.data) {
+      // 尝试从不同的字段获取识别文本
+      if (typeof recognitionResult.data === 'string') {
+        // 如果直接是字符串，尝试解析JSON
+        try {
+          const parsed = JSON.parse(recognitionResult.data)
+          textContent = parsed.text || parsed.result || parsed || ''
+        } catch (e) {
+          textContent = recognitionResult.data
+        }
+      } else if (typeof recognitionResult.data === 'object') {
+        // 如果是对象，尝试从不同字段获取
+        textContent = recognitionResult.data.text || recognitionResult.data.result || ''
+      }
+    }
+    
+    textContent = textContent.trim()
+    console.log('提取的识别文本:', textContent)
+    
+    if (!textContent) {
       console.error('语音识别结果为空')
       alert('无法识别语音内容，请重试')
       // 移除临时消息
@@ -1035,7 +1089,8 @@ const transcribeAudio = async (audioBlob) => {
             ...response.data,
             recognizedText: textContent,
             type: 'voice',
-            duration: recordingDuration.value
+            duration: recordingDuration.value,
+            sender: 'user' // 明确设置为用户
           }
         }
 
@@ -1050,15 +1105,17 @@ const transcribeAudio = async (audioBlob) => {
     alert('语音处理失败，请重试')
     // 移除临时消息
     if (tempMessage) {
-      const tempMsgIndex = messages.value.findIndex(msg => 
-        msg.sender === 'user' && msg.type === 'voice' && msg.id === tempMessage.id
-      )
-      if (tempMsgIndex !== -1) {
-        messages.value.splice(tempMsgIndex, 1)
+      const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
+      if (index !== -1) {
+        messages.value.splice(index, 1)
       }
     }
+  } finally {
+    // 重置录音时长
+    recordingDuration.value = 0
   }
 }
+
 
 // 退出登录
 const handleLogout = async () => {
