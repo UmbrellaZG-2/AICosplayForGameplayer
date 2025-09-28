@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>头像测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .test-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 600px;
+            width: 100%;
+        }
+        .avatar-test {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .avatar-test img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 50%;
+            margin-bottom: 10px;
+        }
+        .path-info {
+            text-align: center;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <h1>头像文件访问测试</h1>
+    <div class="test-container">
+        <!-- 测试直接路径 -->
+        <div class="avatar-test">
+            <img src="/Character/赛马娘无声铃鹿.jpg" alt="赛马娘无声铃鹿">
+            <div class="path-info">/Character/赛马娘无声铃鹿.jpg</div>
+        </div>
+        
+        <div class="avatar-test">
+            <img src="/Character/魔女多萝西.png" alt="魔女多萝西">
+            <div class="path-info">/Character/魔女多萝西.png</div>
+        </div>
+        
+        <div class="avatar-test">
+            <img src="/Character/魔法少女莱万提亚.png" alt="魔法少女莱万提亚">
+            <div class="path-info">/Character/魔法少女莱万提亚.png</div>
+        </div>
+        
+        <!-- 测试编码后的路径 -->
+        <div class="avatar-test">
+            <img src="/Character/%E8%B5%9B%E9%A9%AC%E5%A8%98%E6%97%A0%E5%A3%B0%E9%93%83%E9%B9%BF.jpg" alt="赛马娘无声铃鹿(编码)">
+            <div class="path-info">/Character/赛马娘无声铃鹿.jpg (URL编码)</div>
+        </div>
+        
+        <!-- 测试Vite别名 -->
+        <div class="avatar-test">
+            <img src="http://localhost:3000/Character/赛马娘无声铃鹿.jpg" alt="赛马娘无声铃鹿(完整URL)">
+            <div class="path-info">http://localhost:3000/Character/赛马娘无声铃鹿.jpg</div>
+        </div>
+    </div>
+    
+    <script>
+        // 记录加载状态
+        const images = document.querySelectorAll('img');
+        images.forEach(img => {
+            img.onload = function() {
+                this.style.border = '3px solid green';
+                console.log('加载成功:', this.src);
+            };
+            img.onerror = function() {
+                this.style.border = '3px solid red';
+                console.error('加载失败:', this.src);
+                // 添加错误提示文本
+                const errorText = document.createElement('div');
+                errorText.style.color = 'red';
+                errorText.textContent = '加载失败';
+                this.parentNode.appendChild(errorText);
+            };
+        });
+    </script>
+</body>
+</html>

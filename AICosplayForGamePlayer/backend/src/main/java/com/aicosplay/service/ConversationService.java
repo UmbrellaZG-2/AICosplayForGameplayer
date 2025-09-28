@@ -189,24 +189,6 @@ public class ConversationService {
                 logger.error("AI回复转语音失败，仅保存文本消息: {}", e.getMessage());
                 messageRepository.save(aiMessage);
             }
-        } catch (SecurityException e) {
-            logger.warn("Security check failed for message in conversation: {}", conversationId);
-            // 处理安全检查失败的情况
-            Message safetyMessage = new Message();
-            safetyMessage.setConversation(conversation);
-            safetyMessage.setContent("我无法为这个问题提供相应解答。你可以尝试提供其他话题，我会尽力为你提供支持和解答。");
-            safetyMessage.setSenderType((byte) 2); // 2表示AI
-            safetyMessage.setCreatedAt(java.time.LocalDateTime.now());
-            
-            try {
-                // 尝试为安全提示生成语音
-                Message messageWithVoice = textToSpeechService.convertTextToSpeech(safetyMessage);
-                messageRepository.save(messageWithVoice);
-            } catch (Exception ex) {
-                // 语音转换失败时，仍然保存文本消息
-                logger.error("安全提示转语音失败，仅保存文本消息: {}", ex.getMessage());
-                messageRepository.save(safetyMessage);
-            }
         } catch (Exception e) {
             logger.error("Error processing message in conversation: {}", conversationId, e);
             throw new BusinessException("MESSAGE_PROCESSING_ERROR", "Failed to process message: " + e.getMessage());

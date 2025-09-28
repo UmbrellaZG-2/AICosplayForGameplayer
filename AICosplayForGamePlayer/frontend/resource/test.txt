@@ -1,2 +1,0 @@
-This is a test file to verify publicDir configuration in Vite.
-If you can see this content when accessing http://localhost:3000/test.txt, then publicDir is working correctly.

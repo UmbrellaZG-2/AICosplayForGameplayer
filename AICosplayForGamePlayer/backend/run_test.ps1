@@ -1,0 +1,1 @@
+mvn test -Dtest="com.aicosplay.controller.ConversationControllerTest"

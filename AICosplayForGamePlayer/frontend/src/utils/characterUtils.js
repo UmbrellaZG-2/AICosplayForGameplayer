@@ -79,14 +79,25 @@ export const getCharacterAvatarPathWithExtension = async (characterName) => {
 export const getCharacterAvatarPathSync = (characterName, extension = 'jpg') => {
   if (!characterName) return null;
   
+  console.log('getCharacterAvatarPathSync: 处理角色名:', characterName);
+  
   // 确保扩展名以点开头
   const ext = extension.startsWith('.') ? extension : `.${extension}`;
+  console.log('getCharacterAvatarPathSync: 使用扩展名:', ext);
   
-  // 使用Vite配置的别名路径
-  const basePath = '/Character/';
+  // 检查角色名是否包含中文字符
+  const hasChineseChars = /[\u4e00-\u9fa5]/.test(characterName);
+  console.log('getCharacterAvatarPathSync: 角色名包含中文字符:', hasChineseChars);
   
-  // 直接返回构建的路径
-  return `${basePath}${characterName}${ext}`;
+  // 对包含中文字符的角色名进行URL编码
+  const encodedCharacterName = hasChineseChars ? encodeURIComponent(characterName) : characterName;
+  console.log('getCharacterAvatarPathSync: 编码后的角色名:', encodedCharacterName);
+  
+  // 直接使用相对于resource目录的路径
+  const avatarPath = `/Character/${encodedCharacterName}${ext}`;
+  console.log('getCharacterAvatarPathSync: 最终生成的头像路径:', avatarPath);
+  
+  return avatarPath;
 };
 
 /**

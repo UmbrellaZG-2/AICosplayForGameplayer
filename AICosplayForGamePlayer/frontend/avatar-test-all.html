@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>头像加载测试 - 所有角色</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .character-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            width: calc(33.333% - 20px);
+            min-width: 250px;
+        }
+        .test-group {
+            margin-bottom: 15px;
+        }
+        .test-group h4 {
+            margin: 10px 0 5px 0;
+            color: #333;
+        }
+        .avatar-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .avatar {
+            width: 60px;
+            height: 60px;
+            margin-right: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .avatar img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .avatar-status {
+            font-size: 12px;
+            color: #666;
+        }
+        .path {
+            font-family: monospace;
+            font-size: 12px;
+            color: #0066cc;
+            word-break: break-all;
+            background-color: #f9f9f9;
+            padding: 5px;
+            border-radius: 3px;
+            margin-top: 5px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 40px;
+            margin-bottom: 20px;
+        }
+        .test-description {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>头像加载测试 - 所有角色</h1>
+    <div class="test-description">
+        <p>此页面测试三种不同角色的头像加载情况，包括原始路径、URL编码路径和完整URL路径。</p>
+        <p>头像文件位置：/resource/Character/</p>
+        <p>文件名列表：</p>
+        <ul>
+            <li>赛马娘无声铃鹿.jpg</li>
+            <li>魔女多萝西.png</li>
+            <li>魔法少女莱万提亚.png</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <!-- 赛马娘无声铃鹿 -->
+        <div class="character-card">
+            <h2>赛马娘无声铃鹿</h2>
+            
+            <div class="test-group">
+                <h4>1. 原始路径 (中文未编码)</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/赛马娘无声铃鹿.jpg" 
+                            alt="赛马娘无声铃鹿 - 原始路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/赛马娘无声铃鹿.jpg</div>
+            </div>
+
+            <div class="test-group">
+                <h4>2. URL编码路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/%E8%B5%9B%E9%A9%AC%E5%A8%98%E6%97%A0%E5%A3%B0%E9%93%83%E9%B9%BF.jpg" 
+                            alt="赛马娘无声铃鹿 - URL编码路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/%E8%B5%9B%E9%A9%AC%E5%A8%98%E6%97%A0%E5%A3%B0%E9%93%83%E9%B9%BF.jpg</div>
+            </div>
+
+            <div class="test-group">
+                <h4>3. 完整URL路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="http://localhost:3000/Character/赛马娘无声铃鹿.jpg" 
+                            alt="赛马娘无声铃鹿 - 完整URL路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">http://localhost:3000/Character/赛马娘无声铃鹿.jpg</div>
+            </div>
+        </div>
+
+        <!-- 魔女多萝西 -->
+        <div class="character-card">
+            <h2>魔女多萝西</h2>
+            
+            <div class="test-group">
+                <h4>1. 原始路径 (中文未编码)</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/魔女多萝西.png" 
+                            alt="魔女多萝西 - 原始路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/魔女多萝西.png</div>
+            </div>
+
+            <div class="test-group">
+                <h4>2. URL编码路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/%E9%AD%94%E5%A5%B3%E5%A4%9A%E8%90%BD%E8%A5%BF.png" 
+                            alt="魔女多萝西 - URL编码路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/%E9%AD%94%E5%A5%B3%E5%A4%9A%E8%90%BD%E8%A5%BF.png</div>
+            </div>
+
+            <div class="test-group">
+                <h4>3. 完整URL路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="http://localhost:3000/Character/魔女多萝西.png" 
+                            alt="魔女多萝西 - 完整URL路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">http://localhost:3000/Character/魔女多萝西.png</div>
+            </div>
+        </div>
+
+        <!-- 魔法少女莱万提亚 -->
+        <div class="character-card">
+            <h2>魔法少女莱万提亚</h2>
+            
+            <div class="test-group">
+                <h4>1. 原始路径 (中文未编码)</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/魔法少女莱万提亚.png" 
+                            alt="魔法少女莱万提亚 - 原始路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/魔法少女莱万提亚.png</div>
+            </div>
+
+            <div class="test-group">
+                <h4>2. URL编码路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="/Character/%E9%AD%94%E6%B3%95%E5%B0%91%E5%A5%B3%E8%8E%B1%E4%B8%87%E6%8F%90%E4%BA%9A.png" 
+                            alt="魔法少女莱万提亚 - URL编码路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">/Character/%E9%AD%94%E6%B3%95%E5%B0%91%E5%A5%B3%E8%8E%B1%E4%B8%87%E6%8F%90%E4%BA%9A.png</div>
+            </div>
+
+            <div class="test-group">
+                <h4>3. 完整URL路径</h4>
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <img 
+                            src="http://localhost:3000/Character/魔法少女莱万提亚.png" 
+                            alt="魔法少女莱万提亚 - 完整URL路径"
+                            onload="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✓ 加载成功'"
+                            onerror="this.closest('.avatar-container').querySelector('.avatar-status').textContent = '✗ 加载失败'"
+                        >
+                    </div>
+                    <div class="avatar-status">加载中...</div>
+                </div>
+                <div class="path">http://localhost:3000/Character/魔法少女莱万提亚.png</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>调试信息</h2>
+    <div class="test-description">
+        <p>请打开浏览器开发者工具 (F12)，切换到 Console 标签，查看更详细的加载日志信息。</p>
+    </div>
+
+    <script>
+        // 页面加载完成后记录基本信息和调试日志
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('当前页面URL:', window.location.href);
+            console.log('头像测试页面已加载');
+            console.log('正确的头像路径格式: /Character/[角色名].[扩展名]');
+            
+            // 添加全局错误处理，捕获所有图像加载错误
+            window.addEventListener('error', function(e) {
+                if (e.target.tagName && e.target.tagName.toLowerCase() === 'img') {
+                    console.error('图像加载失败:', e.target.src);
+                }
+            }, true);
+        });
+    </script>
+</body>
+</html>
