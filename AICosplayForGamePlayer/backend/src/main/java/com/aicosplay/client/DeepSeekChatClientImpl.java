@@ -11,6 +11,7 @@ import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -36,23 +37,24 @@ public class DeepSeekChatClientImpl implements ChatClient {
 
     /**
      * 构造函数，通过Spring配置注入DeepSeek API的必要参数
-     * 参数值从application.properties文件中的环境变量读取
+     * 参数值从application.properties文件中的配置项读取
      */
     @Autowired
     public DeepSeekChatClientImpl(
-            @Autowired String apiKey,
-            @Autowired String model,
-            @Autowired Double temperature) {
-        // 验证必要参数
-        Objects.requireNonNull(apiKey, "DeepSeek API key cannot be null. Please set SPRING_AI_DEEPSEEK_API_KEY environment variable.");
-        Objects.requireNonNull(model, "DeepSeek model name cannot be null. Please set SPRING_AI_DEEPSEEK_CHAT_MODEL environment variable.");
-        
+            @Value("${spring.ai.openai.api-key:}") String apiKey,
+            @Value("${spring.ai.deepseek.chat.model:deepseek-chat}") String model,
+            @Value("${spring.ai.deepseek.chat.temperature:0.7}") Double temperature) {
+        // 初始化配置，这里不做强验证以避免应用启动失败
+        // 在实际调用API时会检查apiKey是否有效
         this.apiKey = apiKey;
         this.model = model;
         // 如果未提供温度参数，使用默认值0.7
         this.temperature = temperature != null ? temperature : 0.7;
         
         logger.info("Initializing DeepSeekChatClientImpl with model: {}", model);
+        if (apiKey == null || apiKey.isEmpty()) {
+            logger.warn("DeepSeek API key is not configured. API calls will fail. Please set SPRING_AI_OPENAI_API_KEY environment variable or spring.ai.openai.api-key in application.properties.");
+        }
         
         // 初始化OkHttpClient，设置合适的超时和重试策略
         this.okHttpClient = new OkHttpClient.Builder()
@@ -74,6 +76,12 @@ public class DeepSeekChatClientImpl implements ChatClient {
             Objects.requireNonNull(prompt, "Prompt cannot be null");
             if (prompt.getContents() == null || prompt.getContents().isEmpty()) {
                 throw new IllegalArgumentException("Prompt contents cannot be empty");
+            }
+            
+            // 检查API key是否配置
+            if (apiKey == null || apiKey.isEmpty()) {
+                logger.error("DeepSeek API调用失败：API密钥未配置");
+                throw new RuntimeException("DeepSeek API密钥未配置，请在application.properties中设置spring.ai.openai.api-key或设置环境变量SPRING_AI_OPENAI_API_KEY");
             }
             
             // 构建请求体

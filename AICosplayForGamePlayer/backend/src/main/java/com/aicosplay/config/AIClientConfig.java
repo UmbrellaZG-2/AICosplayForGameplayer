@@ -14,7 +14,7 @@ import com.aicosplay.client.DeepSeekChatClientImpl;
 @Configuration
 public class AIClientConfig {
 
-    @Value("${spring.ai.deepseek.api-key}")
+    @Value("${spring.ai.openai.api-key}")
     private String apiKey;
 
     @Value("${spring.ai.deepseek.chat.model:deepseek-chat}")

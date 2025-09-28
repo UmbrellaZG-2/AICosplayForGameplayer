@@ -704,8 +704,21 @@ const sendMessage = async () => {
   } catch (error) {
     console.error('发送消息失败:', error)
     
+    // 根据错误类型提供更具体的错误提示
+    let errorMessage = '发送消息失败，请稍后重试'
+    
+    // 检查是否是DeepSeek API相关的错误
+    if (error.code === 1004 && error.message && error.message.includes('与DeepSeek API通信时发生错误')) {
+      errorMessage = 'AI服务配置错误: 请确保DeepSeek API密钥已正确配置'
+    } else if (error.code === 401) {
+      errorMessage = '认证失败: 请重新登录'
+    } else if (error.message) {
+      // 显示更具体的错误信息
+      errorMessage = error.message
+    }
+    
     // 显示错误提示
-    alert('发送消息失败，请稍后重试')
+    alert(errorMessage)
     
     // 回滚：移除临时添加的消息
     const index = messages.value.findIndex(msg => msg.sender === 'user' && msg.id === userMessage?.id)
