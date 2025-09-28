@@ -132,7 +132,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { gameCharacterAPI } from '../utils/api.js'
-import { addAvatarPathsToCharacters } from '../utils/characterUtils.js'
+import { addAvatarPathsToCharacters, preloadAvatars } from '../utils/characterUtils.js'
 
 const router = useRouter()
 const presetRoles = ref([])
@@ -157,6 +157,11 @@ const loadRoles = async () => {
       // 使用工具函数为每个角色设置头像路径（基于名称匹配）
       presetRoles.value = addAvatarPathsToCharacters(presetRoles.value)
       customRoles.value = addAvatarPathsToCharacters(customRoles.value)
+      
+      // 预加载所有角色的头像到缓存中
+      const allRoles = [...presetRoles.value, ...customRoles.value]
+      await preloadAvatars(allRoles)
+      console.log('所有角色头像预加载完成')
     }
   } catch (error) {
     console.error('加载角色列表失败:', error)

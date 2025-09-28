@@ -217,6 +217,15 @@ export const speechAPI = {
       return response
     })
   },
+  // 发送音频数据并创建语音消息
+  transcribeAudio: (formData) => {
+    return api.post('/api/conversations/messages/voice', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 60000 // 语音处理可能需要更长时间
+    })
+  },
   // 检查语音识别服务的健康状态
   healthCheck: () => api.get('/api/speech/health'),
   // 切换语音识别服务类型

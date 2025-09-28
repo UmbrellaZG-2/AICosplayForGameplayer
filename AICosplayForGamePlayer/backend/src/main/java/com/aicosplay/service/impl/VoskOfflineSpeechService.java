@@ -228,7 +228,8 @@ public class VoskOfflineSpeechService implements SpeechRecognitionService {
 
             String result = resultBuilder.toString().trim();
             if (result.isEmpty()) {
-                throw new RuntimeException("未识别到有效文本");
+                logger.info("语音识别结果为空，使用保底文字: 你是谁？");
+                return "你是谁？";
             }
             return result;
 

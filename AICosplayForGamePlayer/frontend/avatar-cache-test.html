@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>头像缓存测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #444;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+        .avatar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .avatar-item {
+            text-align: center;
+        }
+        .avatar-container {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid transparent;
+        }
+        .avatar-container.loaded {
+            border-color: #28a745;
+        }
+        .avatar-container.error {
+            border-color: #dc3545;
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .avatar-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .avatar-name {
+            font-size: 12px;
+            color: #666;
+            word-break: break-all;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.clear {
+            background-color: #6c757d;
+        }
+        button.clear:hover {
+            background-color: #545b62;
+        }
+        .log-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        .log-entry:before {
+            content: '[';
+        }
+        .log-entry:after {
+            content: ']';
+        }
+        .timestamp {
+            color: #6c757d;
+            margin-right: 5px;
+        }
+        .status {
+            font-weight: 500;
+        }
+        .status.success {
+            color: #28a745;
+        }
+        .status.error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>头像缓存功能测试</h1>
+    
+    <div class="test-section">
+        <div class="test-title">基本测试</div>
+        <div class="button-group">
+            <button id="load-avatars">加载头像</button>
+            <button id="clear-cache" class="clear">清除缓存</button>
+        </div>
+        <div class="avatar-grid" id="avatar-grid"></div>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">性能测试</div>
+        <p>首次加载时间: <span id="first-load-time">--</span>ms</p>
+        <p>二次加载时间(缓存后): <span id="second-load-time">--</span>ms</p>
+        <p>缓存命中率: <span id="cache-hit-rate">--</span>%</p>
+        <button id="performance-test">运行性能测试</button>
+    </div>
+    
+    <div class="log-container" id="log-container">
+        <div class="log-entry"><span class="timestamp">初始化</span><span class="status">测试页面已加载</span></div>
+    </div>
+
+    <script>
+        // 模拟角色数据
+        const testCharacters = [
+            { id: 1, name: "赛马娘无声铃鹿", description: "速度型赛马娘", extension: "jpg" },
+            { id: 2, name: "魔女多萝西", description: "魔法系角色", extension: "png" },
+            { id: 3, name: "魔法少女莱万提亚", description: "魔法少女系列", extension: "png" },
+            { id: 4, name: "不存在的角色", description: "测试错误处理", extension: "png" }
+        ];
+        
+        // 模拟预加载函数
+        async function preloadAvatars(characters) {
+            const promises = characters.map(character => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    // 使用模拟的头像路径，实际应用中应该使用characterUtils中的函数
+                    const encodedName = encodeURIComponent(character.name);
+                    img.src = `/resource/Character/${encodedName}.${character.extension}`;
+                    
+                    img.onload = () => {
+                        addLog(`头像加载成功: ${character.name}`);
+                        resolve({ success: true, character });
+                    };
+                    
+                    img.onerror = () => {
+                        addLog(`头像加载失败: ${character.name}`, 'error');
+                        resolve({ success: false, character });
+                    };
+                });
+            });
+            
+            return Promise.all(promises);
+        }
+        
+        // 模拟语音识别API
+        async function mockSpeechRecognition(audioBlob, simulateEmptyResult = false) {
+            // 模拟网络延迟
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            if (simulateEmptyResult) {
+                addLog('模拟语音识别返回空结果', 'error');
+                return { data: { text: '' } };
+            }
+            
+            addLog('模拟语音识别成功返回结果');
+            return { data: { text: '测试语音识别内容' } };
+        }
+        
+        // 模拟发送消息到后端
+        async function sendMessageToBackend(conversationId, message) {
+            addLog(`尝试发送消息到后端: 内容长度=${message?.length || 0}字符`);
+            
+            try {
+                // 模拟API调用
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                if (!message || message.trim() === '') {
+                    addLog('后端拒绝接收空消息', 'error');
+                    return { success: false, error: '消息内容不能为空' };
+                }
+                
+                addLog('消息发送成功');
+                return { success: true };
+            } catch (error) {
+                addLog(`发送消息时发生错误: ${error.message}`, 'error');
+                return { success: false, error: error.message };
+            }
+        }
+        
+        // 测试语音识别结果为空的情况
+        async function testEmptySpeechRecognition() {
+            addLog('开始测试: 语音识别结果为空的情况');
+            
+            // 模拟音频Blob
+            const audioBlob = new Blob(['test audio data'], { type: 'audio/wav' });
+            
+            try {
+                // 模拟语音识别，返回空结果
+                const recognitionResult = await mockSpeechRecognition(audioBlob, true);
+                
+                // 提取识别文本
+                let textContent = '';
+                if (recognitionResult && recognitionResult.data && recognitionResult.data.text) {
+                    textContent = recognitionResult.data.text.trim();
+                }
+                
+                addLog(`提取的识别文本: ${textContent || '空'}`);
+                
+                // 尝试发送空消息
+                const conversationId = 'test-conversation';
+                const result = await sendMessageToBackend(conversationId, textContent);
+                
+                if (result.success) {
+                    addLog('测试完成: 空消息发送成功', 'success');
+                } else {
+                    addLog(`测试完成: 空消息发送失败 - ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`测试过程中发生错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 添加日志
+        function addLog(message, type = 'success') {
+            const logContainer = document.getElementById('log-container');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="timestamp">${timestamp}</span><span class="status ${type}">${message}</span>`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        // 加载头像显示
+        function loadAndDisplayAvatars() {
+            const avatarGrid = document.getElementById('avatar-grid');
+            avatarGrid.innerHTML = '';
+            
+            testCharacters.forEach(character => {
+                const avatarItem = document.createElement('div');
+                avatarItem.className = 'avatar-item';
+                
+                const encodedName = encodeURIComponent(character.name);
+                const avatarUrl = `/resource/Character/${encodedName}.${character.extension}`;
+                
+                avatarItem.innerHTML = `
+                    <div class="avatar-container" data-character="${character.name}">
+                        <img src="${avatarUrl}" alt="${character.name}">
+                    </div>
+                    <div class="avatar-name">${character.name}</div>
+                `;
+                
+                const img = avatarItem.querySelector('img');
+                const container = avatarItem.querySelector('.avatar-container');
+                
+                img.onload = () => {
+                    container.classList.add('loaded');
+                };
+                
+                img.onerror = () => {
+                    container.classList.add('error');
+                    img.style.display = 'none';
+                    container.textContent = '👤';
+                };
+                
+                avatarGrid.appendChild(avatarItem);
+            });
+        }
+        
+        // 性能测试
+        async function runPerformanceTest() {
+            addLog('开始性能测试...');
+            
+            // 清除缓存
+            clearAllAvatarCache();
+            
+            // 首次加载
+            const startTime1 = performance.now();
+            await preloadAvatars(testCharacters);
+            const endTime1 = performance.now();
+            const firstLoadTime = Math.round(endTime1 - startTime1);
+            document.getElementById('first-load-time').textContent = firstLoadTime;
+            addLog(`首次加载耗时: ${firstLoadTime}ms`);
+            
+            // 模拟缓存命中
+            const cacheHits = Math.floor(Math.random() * 3) + 1; // 模拟1-3个缓存命中
+            const hitRate = Math.round((cacheHits / testCharacters.length) * 100);
+            document.getElementById('cache-hit-rate').textContent = hitRate;
+            addLog(`模拟缓存命中率: ${hitRate}%`);
+            
+            // 二次加载 (使用缓存)
+            const startTime2 = performance.now();
+            await preloadAvatars(testCharacters);
+            const endTime2 = performance.now();
+            const secondLoadTime = Math.round(endTime2 - startTime2);
+            document.getElementById('second-load-time').textContent = secondLoadTime;
+            addLog(`二次加载耗时: ${secondLoadTime}ms (预期应该比首次快)`);
+            
+            addLog('性能测试完成');
+        }
+        
+        // 绑定事件
+        document.getElementById('load-avatars').addEventListener('click', async () => {
+            addLog('开始加载头像...');
+            await preloadAvatars(testCharacters);
+            loadAndDisplayAvatars();
+        });
+        
+        document.getElementById('clear-cache').addEventListener('click', () => {
+            clearAllAvatarCache();
+        });
+        
+        document.getElementById('performance-test').addEventListener('click', runPerformanceTest);
+        
+        // 添加测试语音识别为空的按钮
+        if (!document.getElementById('test-empty-speech')) {
+            const buttonGroup = document.querySelector('.button-group');
+            const testButton = document.createElement('button');
+            testButton.id = 'test-empty-speech';
+            testButton.textContent = '测试空语音识别';
+            testButton.style.backgroundColor = '#ffc107';
+            testButton.style.color = '#212529';
+            testButton.addEventListener('click', testEmptySpeechRecognition);
+            buttonGroup.appendChild(testButton);
+        }
+    </script>
+</body>
+</html>

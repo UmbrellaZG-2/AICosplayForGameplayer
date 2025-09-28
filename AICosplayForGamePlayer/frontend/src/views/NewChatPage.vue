@@ -71,10 +71,11 @@
             <div class="character-avatar">
               <img 
                 v-if="getCharacterAvatar()" 
-                :src="getCharacterAvatar() || ''" 
+                :src="getCharacterAvatar()" 
                 :alt="getCharacterName()"
                 @error="handleAvatarError"
               >
+              <span v-else-if="getCharacterName()">🤖</span>
               <span v-else>🤖</span>
             </div>
             <div class="conversation-details">
@@ -100,10 +101,11 @@
             <div v-else class="avatar">
                 <img 
                   v-if="getCharacterAvatar()"
-                  :src="getCharacterAvatar() || ''" 
+                  :src="getCharacterAvatar()" 
                   :alt="getCharacterName()"
                   @error="handleAvatarError"
                 >
+                <span v-else-if="getCharacterName()">🤖</span>
                 <span v-else>🤖</span>
               </div>
           </div>
@@ -154,10 +156,11 @@
             <div class="avatar">
                 <img 
                   v-if="getCharacterAvatar()"
-                  :src="getCharacterAvatar() || ''" 
+                  :src="getCharacterAvatar()" 
                   :alt="getCharacterName()"
                   @error="handleAvatarError"
                 >
+                <span v-else-if="getCharacterName()">🤖</span>
                 <span v-else>🤖</span>
               </div>
           </div>
@@ -189,14 +192,18 @@
             rows="1"
           ></textarea>
           <div class="input-actions">
+            <RecordingManager
+              ref="recordingManagerRef"
+              :is-ai-thinking="isAIThinking"
+              @recording-complete="handleRecordingComplete"
+            />
             <button 
               class="record-btn"
-              :class="{ recording: isRecording }"
               :disabled="isAIThinking"
-              @click="toggleRecording"
-              title="录制语音"
+              @click="startRecording"
+              title="启动录音"
             >
-              {{ isRecording ? '⏹️' : '🎤' }}
+              <span>🎤 录音</span>
             </button>
             <button 
               class="send-btn" 
@@ -219,7 +226,10 @@
 import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { conversationAPI, gameCharacterAPI, userAPI, speechAPI } from '../utils/api.js'
-import { getCharacterAvatarPath, getCharacterAvatarPathWithExtension, getCharacterAvatarPathSync, addAvatarPathsToCharacters } from '../utils/characterUtils.js'
+import ChatMessage from '../components/ChatMessage.vue'
+import RecordingManager from '../components/RecordingManager.vue'
+import CharacterSelector from '../components/CharacterSelector.vue'
+import ConversationList from '../components/ConversationList.vue'
 
 const router = useRouter()
 
@@ -233,19 +243,8 @@ const inputMessage = ref('')
 const isSending = ref(false)
 const username = ref('用户')
 const isLoading = ref(false)
-const isRecording = ref(false)
-const recordingDuration = ref(0)
-const maxRecordingDuration = 60 // 最大录音时长60秒
 const isSidebarCollapsed = ref(false)
 const recognition = ref(null)
-const mediaRecorder = ref(null)
-const audioChunks = ref([])
-const audioContext = ref(null)
-const analyser = ref(null)
-const dataArray = ref(null)
-const canvasContext = ref(null)
-const animationId = ref(null)
-const timerInterval = ref(null)
 const isMobile = ref(window.innerWidth <= 768)
 const chatMessagesRef = ref(null)
 const isAIThinking = ref(false)
@@ -253,11 +252,81 @@ const isAIThinking = ref(false)
 const playingVoiceId = ref(null)
 const showTextMap = ref({})
 const audioPlayers = ref({}) // 存储音频播放器实例
-// 存储当前角色头像路径的响应式变量
-const currentCharacterAvatar = ref(null)
+// 录音管理器引用
+const recordingManagerRef = ref(null)
 
-// 当前录音媒体流
-const currentStream = ref(null)
+// 处理录音完成事件
+const handleRecordingComplete = async (audioBlob, duration) => {
+  try {
+    if (!currentConversationId.value) {
+      console.error('没有选择对话')
+      return
+    }
+
+    // 创建临时消息
+    const tempMessage = {
+      id: Date.now(),
+      type: 'voice',
+      duration: Math.round(duration),
+      sender: 'user',
+      senderType: 1,
+      createdAt: new Date().toISOString()
+    }
+
+    // 添加到本地消息列表
+    messages.value.push(tempMessage)
+    scrollToBottom()
+
+    // 准备发送音频数据
+    const formData = new FormData()
+    formData.append('audio', audioBlob)
+    formData.append('conversationId', currentConversationId.value)
+    formData.append('sender', 'user')
+
+    // 调用API发送语音消息
+    const response = await speechAPI.transcribeAudio(formData)
+    
+    if (response && response.code === 200 && response.data) {
+      // 用服务器返回的消息替换本地临时消息
+      const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
+      if (index !== -1) {
+        messages.value[index] = response.data
+      }
+
+      // 主动获取完整的消息列表，确保包含AI回复
+      const messagesResponse = await conversationAPI.getMessages(currentConversationId.value)
+      if (messagesResponse && messagesResponse.code === 200 && messagesResponse.data) {
+        messages.value = messagesResponse.data
+      }
+    }
+  } catch (error) {
+    console.error('发送语音消息失败:', error)
+    alert('发送语音消息失败，请稍后重试')
+    
+    // 回滚：移除临时添加的消息
+    const index = messages.value.findIndex(msg => msg.sender === 'user' && msg.type === 'voice')
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
+  } finally {
+    scrollToBottom()
+  }
+}
+
+// 启动录音
+const startRecording = () => {
+  try {
+    if (recordingManagerRef.value && typeof recordingManagerRef.value.startRecording === 'function') {
+      recordingManagerRef.value.startRecording();
+    } else {
+      console.error('录音管理器未初始化或没有startRecording方法');
+      alert('录音功能暂时不可用，请稍后重试');
+    }
+  } catch (error) {
+    console.error('启动录音失败:', error);
+    alert('启动录音失败，请稍后重试');
+  }
+}
 
 // 格式化语音时长
 const formatVoiceDuration = (seconds) => {
@@ -396,163 +465,35 @@ const formatMessageTime = (dateString) => {
 // 处理头像加载错误
 const handleAvatarError = (event) => {
   if (event && event.target) {
-    console.error('Failed to load avatar:', event.target.src);
-    // 打印当前页面URL和路径，用于调试
-    console.log('Current page URL:', window.location.href);
-    console.log('Current page path:', window.location.pathname);
-    console.log('Character name:', getCharacterName());
-    console.log('Is URL encoded?', event.target.src.includes('%'));
-    
-    // 尝试修复路径 - 如果路径中包含中文字符，确保正确编码
-    try {
-      const originalSrc = event.target.src;
-      // 检查是否是相对路径且不以/开头
-      if (!originalSrc.startsWith('http') && !originalSrc.startsWith('/')) {
-        const basePath = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-        const newSrc = basePath + originalSrc;
-        console.log('Attempting to fix avatar path from', originalSrc, 'to', newSrc);
-        event.target.src = newSrc;
-        // 重新加载图片，只尝试一次
-        if (!event.target.hasAttribute('data-fixed')) {
-          event.target.setAttribute('data-fixed', 'true');
-          event.target.onload = null;
-          event.target.onerror = (e) => {
-            console.error('Failed to load avatar even after path fix:', e.target.src);
-            // 头像加载失败时显示友好错误，不再抛出异常
-            console.log('显示默认头像替代');
-          };
-          return;
-        }
-      } else if (originalSrc.startsWith('/Character/')) {
-        // 对于/Character/开头的路径，尝试使用encodeURIComponent编码角色名
-        const characterName = originalSrc.replace('/Character/', '').split('.')[0];
-        const extension = originalSrc.includes('.') ? originalSrc.substring(originalSrc.lastIndexOf('.')) : '.jpg';
-        const encodedPath = '/Character/' + encodeURIComponent(characterName) + extension;
-        console.log('Attempting encoded avatar path:', encodedPath);
-        if (!event.target.hasAttribute('data-fixed')) {
-          event.target.setAttribute('data-fixed', 'true');
-          event.target.onload = null;
-          event.target.onerror = (e) => {
-            console.error('Failed to load avatar with encoded path:', e.target.src);
-            // 头像加载失败时显示友好错误，不再抛出异常
-            console.log('显示默认头像替代');
-          };
-          event.target.src = encodedPath;
-          return;
-        }
-      }
-    } catch (err) {
-      console.error('Error in avatar path fix:', err);
+    // 检查是否已经尝试过两种格式
+    const hasTriedBothFormats = event.target.dataset.triedBothFormats === 'true';
+    if (!hasTriedBothFormats) {
+      console.log('尝试加载头像:', event.target.src);
+      // 显示红色边框表示加载失败
+      event.target.style.border = '3px solid red';
+      // 尝试切换文件格式
+      const currentSrc = event.target.src;
+      const baseName = currentSrc.substring(0, currentSrc.lastIndexOf('.'));
+      const newExt = currentSrc.endsWith('.jpg') ? '.png' : '.jpg';
+      const newSrc = baseName + newExt;
+      console.log('尝试使用不同格式:', newSrc);
+      event.target.src = newSrc;
+      event.target.dataset.triedBothFormats = 'true';
+    } else {
+      // 两种格式都尝试过了，记录实际的错误
+      console.error('加载头像失败:', event.target.src);
     }
-    
-    // 头像加载失败时不再抛出错误，而是使用默认头像
-    console.log('Avatar failed to load, using default avatar');
   }
 }
 
-// 更新当前角色头像路径
-const updateCurrentCharacterAvatar = () => {
-  console.log('----- updateCurrentCharacterAvatar 开始 -----');
-  
-  if (!currentConversation.value?.characterId) {
-    console.log('No character ID in current conversation');
-    currentCharacterAvatar.value = null;
-    return;
-  }
-  
-  const character = getCharacterById(currentConversation.value.characterId);
-  if (!character?.name) {
-    console.log('No character name found for ID:', currentConversation.value.characterId);
-    currentCharacterAvatar.value = null;
-    return;
-  }
-  
-  console.log('Updating avatar for character:', character.name);
-  
-  // 检查角色名是否包含中文字符
-  const hasChineseChars = /[\u4e00-\u9fa5]/.test(character.name);
-  console.log('Character name has Chinese characters:', hasChineseChars);
-  
-  // 获取头像路径，确保路径格式正确
-  let avatarPath = null;
-  
-  if (character.avatar) {
-    console.log('Using character\'s avatar property:', character.avatar);
-    avatarPath = character.avatar;
-  } else {
-    // 生成默认头像路径作为后备
-    console.log('Generating default avatar path');
-    avatarPath = getCharacterAvatarPathSync(character.name, 'jpg');
-    console.log('Generated default avatar path:', avatarPath);
-  }
-  
-  // 确保头像路径以斜杠开头，避免相对路径问题
-  if (avatarPath && !avatarPath.startsWith('http') && !avatarPath.startsWith('/')) {
-    console.log('Fixing path format: adding leading slash');
-    avatarPath = '/' + avatarPath;
-  }
-  
-  // 检查路径是否编码
-  const isEncoded = avatarPath.includes('%');
-  console.log('Avatar path is encoded:', isEncoded);
-  
-  currentCharacterAvatar.value = avatarPath;
-  console.log('Final avatar path set:', currentCharacterAvatar.value);
-  
-  // 预加载头像图片，提高用户体验
-  if (avatarPath) {
-    const img = new Image();
-    img.src = avatarPath;
-    img.onload = () => {
-      console.log('Avatar preloaded successfully:', avatarPath);
-    };
-    img.onerror = (err) => {
-      console.error('Failed to preload avatar:', avatarPath, err);
-      // 添加备用编码路径尝试
-      const encodedPath = avatarPath.split('/').map(part => {
-        // 只对包含中文字符的部分进行编码
-        if (/[\u4e00-\u9fa5]/.test(part)) {
-          return encodeURIComponent(part);
-        }
-        return part;
-      }).join('/');
-      
-      if (encodedPath !== avatarPath) {
-        console.log('Trying encoded path as fallback:', encodedPath);
-        const encodedImg = new Image();
-        encodedImg.src = encodedPath;
-        encodedImg.onload = () => {
-          console.log('Encoded avatar path loaded successfully');
-          currentCharacterAvatar.value = encodedPath;
-        };
-        encodedImg.onerror = (err) => {
-          console.error('Failed to load with encoded path:', encodedPath, err);
-        };
-      }
-    };
-  }
-  
-  console.log('----- updateCurrentCharacterAvatar 结束 -----');
-}
-
-// 获取角色头像
+// 获取角色头像 - 简化实现，直接返回路径
 const getCharacterAvatar = () => {
-  // 如果没有头像，返回null
-  if (!currentCharacterAvatar.value) {
-    console.log('getCharacterAvatar: 没有头像路径');
-    return null;
+  const characterName = getCharacterName();
+  if (characterName && characterName !== 'AI助手') {
+    // 直接返回简单的头像路径
+    return `/Character/${encodeURIComponent(characterName)}.jpg`;
   }
-  
-  // 确保返回的路径格式正确
-  if (!currentCharacterAvatar.value.startsWith('http') && 
-      !currentCharacterAvatar.value.startsWith('/')) {
-    // 修复路径，确保以斜杠开头
-    const fixedPath = '/' + currentCharacterAvatar.value;
-    console.log('getCharacterAvatar: 修复路径格式:', currentCharacterAvatar.value, '->', fixedPath);
-    return fixedPath;
-  }
-  console.log('getCharacterAvatar: 返回路径:', currentCharacterAvatar.value);
-  return currentCharacterAvatar.value;
+  return null;
 }
 
 // 获取角色名称
@@ -611,8 +552,6 @@ const switchConversation = async (id) => {
   currentConversation.value = conversations.value.find(c => c.id === id)
   // 加载对话消息
   await loadMessages(id)
-  // 更新当前角色头像
-  await updateCurrentCharacterAvatar()
 }
 
 // 导航到用户个人资料页面
@@ -627,7 +566,29 @@ const loadMessages = async (conversationId) => {
     
     // 调用后端API获取消息
     const response = await conversationAPI.getMessages(conversationId)
-    messages.value = response.data || []
+    
+    // 处理从后端返回的消息数据，转换为前端所需的格式
+    if (response.data && Array.isArray(response.data)) {
+      messages.value = response.data.map(message => {
+        // 转换后端的消息格式为前端组件可用的格式
+        return {
+          id: message.id,
+          content: message.content,
+          // 后端使用senderType(1-用户，2-AI)，前端使用sender(user/ai)
+          sender: message.senderType === 1 ? 'user' : 'ai',
+          senderType: message.senderType,
+          // 处理语音消息相关字段
+          type: message.isVoiceMessage === 1 ? 'voice' : 'text',
+          duration: message.voiceDuration || 0,
+          voiceId: message.voiceFilePath,
+          // AI生成的语音消息，显示原始文本
+          textContent: message.isVoiceMessage === 1 && message.senderType === 2 ? message.content : '',
+          createdAt: message.createdAt
+        }
+      })
+    } else {
+      messages.value = []
+    }
     
     // 滚动到底部
     scrollToBottom()
@@ -672,6 +633,7 @@ const sendMessage = async () => {
       id: Date.now(), // 临时ID
       content: messageContent,
       sender: 'user',
+      senderType: 1,
       createdAt: new Date().toISOString()
     }
     messages.value.push(userMessage)
@@ -696,9 +658,31 @@ const sendMessage = async () => {
         messages.value[index] = response.data
       }
       
-      // 检查是否有AI回复
-      if (response.data && response.data.reply) {
-        messages.value.push(response.data.reply)
+      // 主动获取完整的消息列表，确保包含AI回复
+      const messagesResponse = await conversationAPI.getMessages(currentConversationId.value)
+      if (messagesResponse && messagesResponse.code === 200 && messagesResponse.data) {
+        // 对消息进行格式转换，特别是处理语音消息
+        if (Array.isArray(messagesResponse.data)) {
+          messages.value = messagesResponse.data.map(message => {
+            // 转换后端的消息格式为前端组件可用的格式
+            return {
+              id: message.id,
+              content: message.content,
+              // 后端使用senderType(1-用户，2-AI)，前端使用sender(user/ai)
+              sender: message.senderType === 1 ? 'user' : 'ai',
+              senderType: message.senderType,
+              // 处理语音消息相关字段
+              type: message.isVoiceMessage === 1 ? 'voice' : 'text',
+              duration: message.voiceDuration || 0,
+              voiceId: message.voiceFilePath,
+              // AI生成的语音消息，显示原始文本
+              textContent: message.isVoiceMessage === 1 && message.senderType === 2 ? message.content : '',
+              createdAt: message.createdAt
+            }
+          })
+        } else {
+          messages.value = messagesResponse.data
+        }
       }
     }
   } catch (error) {
@@ -742,393 +726,6 @@ const handleSendFailed = () => {
   alert('发送消息失败，请检查网络连接或稍后重试')
 }
 
-// 切换录音状态
-const toggleRecording = async () => {
-  if (isRecording.value) {
-    // 停止录音
-    stopRecording()
-  } else {
-    // 开始录音
-    await startRecording()
-  }
-}
-
-// 开始录音
-const startRecording = async () => {
-  try {
-    // 获取用户媒体权限
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    
-    // 初始化音频上下文和声纹分析
-    audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
-    analyser.value = audioContext.value.createAnalyser()
-    const source = audioContext.value.createMediaStreamSource(stream)
-    source.connect(analyser.value)
-    
-    analyser.value.fftSize = 256
-    const bufferLength = analyser.value.frequencyBinCount
-    dataArray.value = new Uint8Array(bufferLength)
-    
-    // 设置canvas用于声纹显示
-    const canvas = document.getElementById('audio-visualizer')
-    if (canvas) {
-      canvasContext.value = canvas.getContext('2d')
-      // 开始绘制声纹
-      drawWaveform()
-    }
-    
-    // 初始化媒体记录器
-    // 检测浏览器支持的音频格式，优先选择wav，否则使用默认格式
-    let mimeType = 'audio/wav'
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      // 尝试其他常见格式
-      const supportedTypes = ['audio/webm', 'audio/ogg', 'audio/mp4']
-      for (const type of supportedTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type
-          break
-        }
-      }
-    }
-    
-    mediaRecorder.value = new MediaRecorder(stream, { mimeType })
-    audioChunks.value = []
-    
-    // 保存stream到ref中以确保在onstop回调中可以访问
-    currentStream.value = stream
-    
-    mediaRecorder.value.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        audioChunks.value.push(event.data)
-      }
-    }
-    
-    mediaRecorder.value.onstop = async () => {
-      // 停止声纹绘制
-      if (animationId.value) {
-        cancelAnimationFrame(animationId.value)
-      }
-      
-      // 停止计时器
-      if (timerInterval.value) {
-        clearInterval(timerInterval.value)
-        timerInterval.value = null
-      }
-      
-      isRecording.value = false
-      
-      // 如果有录音数据，处理并发送
-      if (audioChunks.value.length > 0) {
-        console.log('录音数据块数量:', audioChunks.value.length)
-        console.log('录音持续时间:', recordingDuration.value, '秒')
-        
-        // 使用媒体记录器的实际mimeType创建Blob
-        const audioBlob = new Blob(audioChunks.value, { type: mediaRecorder.value.mimeType })
-        console.log('创建的音频Blob:', audioBlob.size, '字节, 类型:', audioBlob.type)
-        
-        // 处理录音数据
-        transcribeAudio(audioBlob)
-      } else {
-        console.error('没有录音数据，可能是录音时间太短或麦克风未接收到声音')
-        alert('未检测到声音，请确保麦克风正常工作且音量足够')
-      }
-      
-      // 关闭媒体流
-      if (currentStream.value) {
-        currentStream.value.getTracks().forEach(track => track.stop())
-        currentStream.value = null
-      }
-      
-      // 清理DOM元素
-      const recordingOverlay = document.getElementById('recording-overlay')
-      if (recordingOverlay) {
-        recordingOverlay.remove()
-      }
-    }
-    
-    // 开始录音
-    mediaRecorder.value.start()
-    isRecording.value = true
-    
-    // 显示录音提示和倒计时
-    showRecordingOverlay()
-    
-    // 启动计时器
-    startTimer()
-    
-    // 设置60秒自动停止计时器
-    setTimeout(() => {
-      if (isRecording.value) {
-        stopRecording()
-        // 自动发送消息
-        if (inputMessage.value.trim()) {
-          sendMessage()
-        }
-      }
-    }, maxRecordingDuration * 1000)
-    
-  } catch (error) {
-    console.error('开始录音失败:', error)
-    alert('获取麦克风权限失败，请确保已授予权限')
-  }
-}
-
-// 停止录音
-const stopRecording = () => {
-  // 停止计时器
-  if (timerInterval.value) {
-    clearInterval(timerInterval.value)
-    timerInterval.value = null
-  }
-  
-  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
-    mediaRecorder.value.stop()
-  }
-}
-
-// 显示录音覆盖层
-const showRecordingOverlay = () => {
-  // 检查是否已存在覆盖层
-  if (document.getElementById('recording-overlay')) {
-    return
-  }
-  
-  const overlay = document.createElement('div')
-  overlay.id = 'recording-overlay'
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    color: white;
-    font-size: 18px;
-  `
-  
-  const message = document.createElement('div')
-  message.textContent = '录音已开始'
-  message.style.marginBottom = '10px'
-  
-  // 添加计时器显示
-  const timerDisplay = document.createElement('div')
-  timerDisplay.id = 'recording-timer'
-  timerDisplay.textContent = '00:00'
-  timerDisplay.style.marginBottom = '20px'
-  timerDisplay.style.fontSize = '24px'
-  timerDisplay.style.fontWeight = 'bold'
-  
-  const canvas = document.createElement('canvas')
-  canvas.id = 'audio-visualizer'
-  canvas.width = 300
-  canvas.height = 100
-  canvas.style.marginBottom = '20px'
-  canvas.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-  canvas.style.borderRadius = '8px'
-  
-  const stopButton = document.createElement('button')
-  stopButton.textContent = '结束录音'
-  stopButton.style.cssText = `
-    background-color: #f44336;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 20px;
-    font-size: 16px;
-    cursor: pointer;
-  `
-  
-  stopButton.addEventListener('click', stopRecording)
-  
-  overlay.appendChild(message)
-  overlay.appendChild(timerDisplay)
-  overlay.appendChild(canvas)
-  overlay.appendChild(stopButton)
-  
-  document.body.appendChild(overlay)
-}
-
-// 启动计时器
-const startTimer = () => {
-  recordingDuration.value = 0
-  
-  // 清除可能存在的旧计时器
-  if (timerInterval.value) {
-    clearInterval(timerInterval.value)
-  }
-  
-  // 创建新的计时器
-  timerInterval.value = setInterval(() => {
-    recordingDuration.value++
-    
-    // 更新计时器显示
-    const timerElement = document.getElementById('recording-timer')
-    if (timerElement) {
-      const minutes = Math.floor(recordingDuration.value / 60).toString().padStart(2, '0')
-      const seconds = (recordingDuration.value % 60).toString().padStart(2, '0')
-      timerElement.textContent = `${minutes}:${seconds}`
-    }
-    
-    // 如果达到最大录音时长，自动停止
-    if (recordingDuration.value >= maxRecordingDuration) {
-      stopRecording()
-    }
-  }, 1000)
-}
-
-// 绘制音频波形
-const drawWaveform = () => {
-  if (!analyser.value || !canvasContext.value) return
-  
-  const canvas = canvasContext.value.canvas
-  const WIDTH = canvas.width
-  const HEIGHT = canvas.height
-  
-  // 确保analyser有正确的参数设置
-  analyser.value.fftSize = 256
-  const bufferLength = analyser.value.frequencyBinCount
-  dataArray.value = new Uint8Array(bufferLength)
-  
-  const draw = () => {
-    animationId.value = requestAnimationFrame(draw)
-    
-    // 获取当前的音频数据
-    analyser.value.getByteFrequencyData(dataArray.value)
-    
-    // 清空canvas
-    canvasContext.value.fillStyle = 'rgba(255, 255, 255, 0.1)'
-    canvasContext.value.fillRect(0, 0, WIDTH, HEIGHT)
-    
-    // 绘制音频波形
-    const barWidth = (WIDTH / dataArray.value.length) * 2.5
-    let x = 0
-    
-    for (let i = 0; i < dataArray.value.length; i++) {
-      const barHeight = (dataArray.value[i] / 255) * HEIGHT
-      
-      // 根据音频强度动态调整颜色
-      canvasContext.value.fillStyle = `rgb(${255}, ${100 + barHeight}, ${100})`
-      canvasContext.value.fillRect(x, HEIGHT - barHeight, barWidth, barHeight)
-      
-      x += barWidth + 1
-    }
-  }
-  
-  draw()
-}
-
-// 音频转文字并发送消息
-const transcribeAudio = async (audioBlob) => {
-  let tempMessage = null
-  try {
-    // 显示正在处理提示
-    tempMessage = {
-      id: Date.now(),
-      content: `语音${recordingDuration.value}秒`,
-      sender: 'user',
-      type: 'voice',
-      duration: recordingDuration.value,
-      createdAt: new Date().toISOString()
-    }
-    messages.value.push(tempMessage)
-    scrollToBottom()
-
-    // 发送音频到后端进行语音识别
-    console.log('正在发送音频进行识别，大小:', audioBlob.size, '类型:', audioBlob.type)
-    const recognitionResult = await speechAPI.recognize(audioBlob)
-    console.log('语音识别API返回结果:', recognitionResult)
-    
-    // 适配不同的数据格式，确保能获取到识别文本
-    let textContent = ''
-    if (recognitionResult && recognitionResult.data) {
-      // 尝试从不同的字段获取识别文本
-      if (typeof recognitionResult.data === 'string') {
-        // 如果直接是字符串，尝试解析JSON
-        try {
-          const parsed = JSON.parse(recognitionResult.data)
-          textContent = parsed.text || parsed.result || parsed || ''
-        } catch (e) {
-          textContent = recognitionResult.data
-        }
-      } else if (typeof recognitionResult.data === 'object') {
-        // 如果是对象，尝试从不同字段获取
-        textContent = recognitionResult.data.text || recognitionResult.data.result || ''
-      }
-    }
-    
-    textContent = textContent.trim()
-    console.log('提取的识别文本:', textContent)
-    
-    if (!textContent) {
-      console.error('语音识别结果为空')
-      alert('无法识别语音内容，请重试')
-      // 移除临时消息
-      const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
-      if (index !== -1) {
-        messages.value.splice(index, 1)
-      }
-      return
-    }
-
-    // 更新临时消息，添加识别出的文本
-    const updatedMessage = {
-      ...tempMessage,
-      recognizedText: textContent
-    }
-    const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
-    if (index !== -1) {
-      messages.value[index] = updatedMessage
-    }
-
-    // 调用API发送识别出的文本消息
-    if (currentConversationId.value) {
-      const response = await conversationAPI.addMessage(currentConversationId.value, {
-        content: textContent,
-        sender: 'user',
-        type: 'voice'
-      })
-
-      // 检查响应是否正常
-      if (response && response.code === 200 && response.data) {
-        // 用服务器返回的消息替换本地临时消息
-        const msgIndex = messages.value.findIndex(msg => msg.id === tempMessage.id)
-        if (msgIndex !== -1) {
-          messages.value[msgIndex] = {
-            ...response.data,
-            recognizedText: textContent,
-            type: 'voice',
-            duration: recordingDuration.value,
-            sender: 'user' // 明确设置为用户
-          }
-        }
-
-        // 检查是否有AI回复
-        if (response.data && response.data.reply) {
-          messages.value.push(response.data.reply)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('语音处理失败:', error)
-    alert('语音处理失败，请重试')
-    // 移除临时消息
-    if (tempMessage) {
-      const index = messages.value.findIndex(msg => msg.id === tempMessage.id)
-      if (index !== -1) {
-        messages.value.splice(index, 1)
-      }
-    }
-  } finally {
-    // 重置录音时长
-    recordingDuration.value = 0
-  }
-}
-
 
 // 退出登录
 const handleLogout = async () => {
@@ -1159,7 +756,7 @@ const loadConversations = async () => {
   }
 }
 
-// 加载角色信息（模仿RoleSelectionPage.vue的处理方式，但只加载一个角色）
+// 加载角色信息
 const loadCharacters = async () => {
   try {
     // 检查localStorage中是否有已选择的角色信息
@@ -1167,7 +764,7 @@ const loadCharacters = async () => {
     const selectedRoleId = localStorage.getItem('selectedRoleId');
     let characterData = [];
     
-    // 首先尝试获取所有角色（模仿RoleSelectionPage.vue的方式）
+    // 首先尝试获取所有角色
     const response = await gameCharacterAPI.getAll();
     
     if (response && response.code === 200 && response.data) {
@@ -1206,13 +803,7 @@ const loadCharacters = async () => {
         characterData = response.data;
       }
       
-      // 使用工具函数为所有角色添加头像路径
-      characters.value = addAvatarPathsToCharacters(characterData);
-      
-      // 如果有当前对话，更新头像
-      if (currentConversation.value?.characterId) {
-        await updateCurrentCharacterAvatar();
-      }
+      characters.value = characterData;
     }
   } catch (error) {
     console.error('加载角色列表失败:', error);
@@ -1708,6 +1299,13 @@ const deleteCurrentConversation = async () => {
   align-items: center;
   justify-content: center;
   font-size: 18px;
+  overflow: hidden;
+}
+
+.message-avatar .avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .message-content {

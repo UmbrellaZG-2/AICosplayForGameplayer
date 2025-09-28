@@ -9,7 +9,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration.class)
 @EntityScan(basePackages = "com.aicosplay.entity")
 @EnableJpaRepositories(basePackages = "com.aicosplay.repository")
 public class BackendApplication {
